@@ -5,12 +5,103 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { Calendar, ChevronRight, Loader2 } from "lucide-react";
+import { Calendar, ChevronRight, Loader2, MapPin, Clock, Coffee, Wifi, Car } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import Link from "next/link";
 
 const publicApi = axios.create({ baseURL: API_URL });
+
+const PARK_LABELS: Record<string, string> = {
+  no: "Sin estacionamiento",
+  si_gratis: "Estacionamiento gratuito",
+  si_pago: "Estacionamiento de pago",
+  limitado: "Estacionamiento limitado",
+};
+
+function PublicPlaceInfo({
+  loc,
+  ho,
+  am,
+}: {
+  loc: Record<string, string>;
+  ho: Record<string, string>;
+  am: Record<string, unknown>;
+}) {
+  const park = String(am.estacionamiento || "");
+  return (
+    <div className="space-y-3 text-slate-700 dark:text-slate-200">
+      {(loc.direccion_atencion || loc.comuna) && (
+        <div className="flex gap-2">
+          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+          <div>
+            <p className="font-medium">{[loc.direccion_atencion, loc.comuna, loc.region].filter(Boolean).join(", ")}</p>
+            {loc.referencias_acceso && <p className="mt-1 text-xs text-slate-500">{loc.referencias_acceso}</p>}
+            {loc.google_maps_url && (
+              <a
+                href={loc.google_maps_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-block text-xs text-blue-600 hover:underline"
+              >
+                Ver en mapa
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+      {(ho.lun_vie || ho.sabado || ho.domingo_feriados) && (
+        <div className="flex gap-2">
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+          <div className="text-xs">
+            {ho.lun_vie && (
+              <p>
+                <span className="font-semibold">Lun–Vie:</span> {ho.lun_vie}
+              </p>
+            )}
+            {ho.sabado && (
+              <p>
+                <span className="font-semibold">Sáb:</span> {ho.sabado}
+              </p>
+            )}
+            {ho.domingo_feriados && (
+              <p>
+                <span className="font-semibold">Dom / feriados:</span> {ho.domingo_feriados}
+              </p>
+            )}
+            {ho.notas && <p className="mt-1 text-slate-500">{ho.notas}</p>}
+          </div>
+        </div>
+      )}
+      {park && park !== "no" && (
+        <div className="flex gap-2">
+          <Car className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+          <p className="text-xs">
+            <span className="font-semibold">{PARK_LABELS[park] ?? park}</span>
+            {am.estacionamiento_detalle ? ` · ${am.estacionamiento_detalle}` : ""}
+          </p>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2 text-xs">
+        {Boolean(am.cafeteria) && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+            <Coffee className="h-3 w-3" /> Café / bebidas
+          </span>
+        )}
+        {Boolean(am.wifi) && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+            <Wifi className="h-3 w-3" /> Wi‑Fi
+          </span>
+        )}
+        {Boolean(am.sala_espera) && <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">Sala de espera</span>}
+        {Boolean(am.acceso_movilidad) && <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">Acceso movilidad</span>}
+      </div>
+      {typeof am.otras_comodidades === "string" && am.otras_comodidades.trim() && (
+        <p className="text-xs text-slate-600 dark:text-slate-300">{am.otras_comodidades}</p>
+      )}
+    </div>
+  );
+}
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -119,6 +210,35 @@ export default function PublicBookPage() {
           </h1>
           <p className="mt-2 text-sm text-slate-500">Elegí servicio, sucursal, profesional y horario.</p>
         </div>
+
+        {meta.data?.public &&
+          (() => {
+            const pub = meta.data.public as {
+              location_public?: Record<string, string>;
+              horarios?: Record<string, string>;
+              amenities?: Record<string, unknown>;
+            };
+            const loc = pub.location_public || {};
+            const ho = pub.horarios || {};
+            const am = pub.amenities || {};
+            const hasInfo =
+              Boolean(loc.direccion_atencion || loc.comuna || loc.referencias_acceso || loc.google_maps_url) ||
+              Boolean(ho.lun_vie || ho.sabado || ho.domingo_feriados || ho.notas) ||
+              Boolean(am.estacionamiento && am.estacionamiento !== "no") ||
+              Boolean(am.cafeteria || am.wifi || am.sala_espera || am.acceso_movilidad) ||
+              (typeof am.otras_comodidades === "string" && am.otras_comodidades.trim().length > 0);
+            if (!hasInfo) return null;
+            return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 text-left text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900"
+            >
+              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Sobre este lugar</p>
+              <PublicPlaceInfo loc={loc} ho={ho} am={am} />
+            </motion.div>
+            );
+          })()}
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}

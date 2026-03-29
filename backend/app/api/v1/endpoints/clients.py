@@ -32,7 +32,20 @@ async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = N
     query = query.offset(skip).limit(limit).order_by(Client.created_at.desc())
     result = await db.execute(query)
     clients = result.scalars().all()
-    return {"items": [{"id": c.id, "name": c.name, "email": c.email, "phone": c.phone, "created_at": c.created_at} for c in clients], "total": total}
+    return {
+        "items": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "email": c.email,
+                "phone": c.phone,
+                "created_at": c.created_at,
+                "preferences": c.preferences or {},
+            }
+            for c in clients
+        ],
+        "total": total,
+    }
 
 @router.post("/")
 async def create_client(data: ClientCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):

@@ -1,7 +1,7 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Plus, Search, Mail, Phone, Trash2, User } from "lucide-react";
+import { Plus, Search, Mail, Phone, Trash2, User, CalendarDays } from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { toast } from "sonner";
@@ -13,13 +13,21 @@ interface ClientItem {
   email: string | null;
   phone: string | null;
   created_at: string;
+  preferences?: Record<string, unknown>;
 }
 
 export default function ClientsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", address: "", notes: "" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+    notes: "",
+    next_contact_date: "",
+  });
 
   const { data } = useQuery({
     queryKey: ["clients", search],
@@ -27,11 +35,16 @@ export default function ClientsPage() {
   });
 
   const create = useMutation({
-    mutationFn: (data: typeof form) => api.post("/clients/", data),
+    mutationFn: (data: typeof form) => {
+      const { next_contact_date, ...rest } = data;
+      const preferences: Record<string, string> = {};
+      if (next_contact_date) preferences.next_contact_date = next_contact_date;
+      return api.post("/clients/", { ...rest, preferences });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["clients"] });
       setShowForm(false);
-      setForm({ name: "", email: "", phone: "", address: "", notes: "" });
+      setForm({ name: "", email: "", phone: "", address: "", notes: "", next_contact_date: "" });
       toast.success("Cliente creado");
     },
   });
@@ -51,6 +64,10 @@ export default function ClientsPage() {
           <p className="mb-1 text-xs font-bold uppercase tracking-widest text-slate-400">CRM</p>
           <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">Clientes</h1>
           <p className="mt-1 text-slate-500">{data?.total ?? 0} clientes registrados</p>
+          <p className="mt-2 max-w-xl text-sm text-slate-600">
+            Alta sencilla: nombre obligatorio; el resto es opcional. Usa el <strong>calendario</strong> para anotar cuándo quieres volver a contactar a la
+            persona (se guarda como recordatorio en su ficha).
+          </p>
         </div>
         <button type="button" onClick={() => setShowForm(!showForm)} className="btn-primary self-start">
           <Plus className="h-4 w-4" /> Nuevo cliente
@@ -58,7 +75,8 @@ export default function ClientsPage() {
       </div>
       {showForm && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="glass-card mb-6 p-6">
-          <h2 className="mb-4 font-semibold text-on-surface">Nuevo cliente</h2>
+          <h2 className="mb-1 font-semibold text-on-surface">Nuevo cliente</h2>
+          <p className="mb-4 text-sm text-slate-500">Completa los datos básicos. El calendario es opcional y ayuda a planificar seguimientos.</p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <input
               value={form.name}
@@ -90,6 +108,19 @@ export default function ClientsPage() {
               className="input-field md:col-span-2 h-20 resize-none"
               placeholder="Notas..."
             />
+            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <CalendarDays className="h-4 w-4 text-primary" />
+                Próximo contacto o seguimiento (opcional)
+              </label>
+              <input
+                type="date"
+                value={form.next_contact_date}
+                onChange={(e) => setForm((f) => ({ ...f, next_contact_date: e.target.value }))}
+                className="input-field max-w-xs"
+              />
+              <p className="mt-2 text-xs text-slate-500">Elige una fecha con el calendario del navegador; quedará guardada en la ficha del cliente.</p>
+            </div>
           </div>
           <div className="mt-4 flex gap-3">
             <button type="button" onClick={() => create.mutate(form)} className="btn-primary">
@@ -141,6 +172,12 @@ export default function ClientsPage() {
               <div className="flex items-center gap-2 text-sm text-slate-600">
                 <Phone className="h-3.5 w-3.5" />
                 {client.phone}
+              </div>
+            )}
+            {typeof client.preferences?.next_contact_date === "string" && client.preferences.next_contact_date && (
+              <div className="mt-3 flex items-center gap-2 rounded-lg bg-primary/5 px-2 py-1.5 text-xs font-medium text-primary">
+                <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                Seguimiento: {new Date(`${client.preferences.next_contact_date}T12:00:00`).toLocaleDateString("es-CL", { dateStyle: "long" })}
               </div>
             )}
           </motion.div>

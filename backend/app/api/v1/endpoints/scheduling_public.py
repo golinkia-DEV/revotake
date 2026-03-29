@@ -38,7 +38,21 @@ async def _store_by_slug(db: AsyncSession, slug: str) -> Store:
 @router.get("/{store_slug}/meta")
 async def public_meta(store_slug: str, db: AsyncSession = Depends(get_db)):
     store = await _store_by_slug(db, store_slug)
-    return {"store_id": store.id, "name": store.name, "slug": store.slug}
+    settings = store.settings if isinstance(store.settings, dict) else {}
+    sp = settings.get("store_profile") if isinstance(settings, dict) else {}
+    public_block = {}
+    if isinstance(sp, dict):
+        loc = sp.get("location_public") if isinstance(sp.get("location_public"), dict) else {}
+        hor = sp.get("horarios") if isinstance(sp.get("horarios"), dict) else {}
+        am = sp.get("amenities") if isinstance(sp.get("amenities"), dict) else {}
+        if loc or hor or am:
+            public_block = {"location_public": loc, "horarios": hor, "amenities": am}
+    return {
+        "store_id": store.id,
+        "name": store.name,
+        "slug": store.slug,
+        "public": public_block,
+    }
 
 
 @router.get("/{store_slug}/services")

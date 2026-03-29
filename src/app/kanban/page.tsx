@@ -1,23 +1,14 @@
 "use client";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { motion } from "framer-motion";
 import { Calendar } from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { toast } from "sonner";
 import clsx from "clsx";
-
-const COLUMNS: { id: string; label: string; color: string }[] = [
-  { id: "new", label: "Nuevo", color: "border-blue-400" },
-  { id: "qualified", label: "Calificado", color: "border-purple-400" },
-  { id: "meeting_scheduled", label: "Reunión", color: "border-amber-400" },
-  { id: "data_received", label: "Datos recibidos", color: "border-cyan-400" },
-  { id: "sold", label: "Vendido", color: "border-emerald-400" },
-  { id: "follow_up", label: "Seguimiento", color: "border-orange-400" },
-  { id: "no_response", label: "Sin respuesta", color: "border-rose-400" },
-  { id: "closed", label: "Cerrado", color: "border-slate-400" },
-];
+import { getStoreId } from "@/lib/store";
+import { getKanbanColumns, presetById } from "@/lib/operationsWorkflow";
 
 const PRIORITY_COLORS: Record<string, string> = {
   high: "bg-red-50 text-red-800 border border-red-200",
@@ -69,6 +60,16 @@ function TicketCard({ ticket, index }: { ticket: TicketItem; index: number }) {
 
 export default function KanbanPage() {
   const qc = useQueryClient();
+  const [storeId, setStoreId] = useState<string | null>(null);
+  useEffect(() => setStoreId(getStoreId()), []);
+  const { data: store } = useQuery({
+    queryKey: ["store-detail", storeId],
+    queryFn: () => api.get(`/stores/${storeId}`).then((r) => r.data),
+    enabled: !!storeId,
+  });
+  const columns = getKanbanColumns(store?.settings);
+  const ops = store?.settings?.operations as { preset?: string; workflow_notes?: string } | undefined;
+  const presetHint = presetById(ops?.preset).hint;
   const { data: board } = useQuery({ queryKey: ["kanban"], queryFn: () => api.get("/tickets/kanban").then((r) => r.data) });
 
   const updateStatus = useMutation({
@@ -92,7 +93,14 @@ export default function KanbanPage() {
         <div>
           <p className="mb-1 text-xs font-bold uppercase tracking-widest text-slate-400">Workspace</p>
           <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">Operaciones</h1>
-          <p className="mt-1 text-slate-500">Arrastra tickets entre columnas para actualizar su estado</p>
+          <p className="mt-1 max-w-xl text-slate-600">
+            Arrastra <strong>tickets</strong> entre columnas para avanzar el estado. Las etiquetas las configuraste al crear la tienda (o en Tiendas →
+            Configuración): cada negocio puede tener su propio vocabulario.
+          </p>
+          <p className="mt-2 text-sm text-slate-500">{presetHint}</p>
+          {ops?.workflow_notes ? (
+            <p className="mt-1 text-sm italic text-slate-600 border-l-2 border-primary/30 pl-3">“{ops.workflow_notes}”</p>
+          ) : null}
         </div>
         <div className="flex gap-3">
           <button type="button" className="btn-secondary flex items-center gap-2 border border-slate-200 bg-white">
@@ -102,8 +110,8 @@ export default function KanbanPage() {
       </div>
       <div className="overflow-x-auto pb-4">
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex gap-4" style={{ minWidth: `${COLUMNS.length * 280}px` }}>
-            {COLUMNS.map((col) => (
+          <div className="flex gap-4" style={{ minWidth: `${columns.length * 280}px` }}>
+            {columns.map((col) => (
               <div key={col.id} className="w-64 flex-shrink-0">
                 <div className={clsx("mb-3 rounded-2xl border-t-2 bg-surface-container-low/80 p-3", col.color)}>
                   <div className="flex items-center justify-between">
