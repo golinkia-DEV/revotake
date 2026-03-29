@@ -70,6 +70,29 @@ async def stock_alerts(db: AsyncSession = Depends(get_db), current_user: User = 
     products = result.scalars().all()
     return {"alerts": [{"id": p.id, "name": p.name, "stock": p.stock, "stock_status": p.stock_status, "days_of_stock": p.days_of_stock, "avg_daily_sales": p.avg_daily_sales} for p in products]}
 
+
+@router.get("/{product_id}")
+async def get_product(product_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+    result = await db.execute(select(Product).where(Product.id == product_id, Product.store_id == ctx.store_id))
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(404, "Product not found")
+    return {
+        "id": product.id,
+        "name": product.name,
+        "description": product.description,
+        "sku": product.sku,
+        "price": product.price,
+        "stock": product.stock,
+        "lead_time_days": product.lead_time_days,
+        "category": product.category,
+        "custom_fields": product.custom_fields,
+        "stock_status": product.stock_status,
+        "avg_daily_sales": product.avg_daily_sales,
+        "days_of_stock": product.days_of_stock,
+    }
+
+
 @router.post("/")
 async def create_product(data: ProductCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
     product = Product(store_id=ctx.store_id, **data.model_dump())

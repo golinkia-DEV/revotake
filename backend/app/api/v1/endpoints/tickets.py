@@ -60,6 +60,29 @@ async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = 
         board[status.value] = [{"id": t.id, "title": t.title, "type": t.type, "status": t.status, "priority": t.priority, "client_id": t.client_id, "due_date": t.due_date} for t in tickets if t.status == status]
     return board
 
+
+@router.get("/{ticket_id}")
+async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id, Ticket.store_id == ctx.store_id))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+    return {
+        "id": ticket.id,
+        "title": ticket.title,
+        "description": ticket.description,
+        "type": ticket.type,
+        "status": ticket.status,
+        "priority": ticket.priority,
+        "client_id": ticket.client_id,
+        "assigned_to": ticket.assigned_to,
+        "extra_data": ticket.extra_data,
+        "due_date": ticket.due_date,
+        "created_at": ticket.created_at,
+        "updated_at": ticket.updated_at,
+    }
+
+
 @router.post("/")
 async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
     if data.client_id and not await _ensure_client_store(db, data.client_id, ctx.store_id):

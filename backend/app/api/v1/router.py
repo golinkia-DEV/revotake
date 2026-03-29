@@ -2,6 +2,29 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import auth, clients, tickets, products, meetings, forms, ai, dashboard, store_types, stores
 
 api_router = APIRouter()
+
+
+@api_router.get("/", tags=["meta"], summary="Información de la API v1")
+async def api_v1_root():
+    return {
+        "service": "revotake-api",
+        "version": "1.0.0",
+        "prefix": "/api/v1",
+        "resources": [
+            "/auth",
+            "/store-types",
+            "/stores",
+            "/clients",
+            "/tickets",
+            "/products",
+            "/meetings",
+            "/forms",
+            "/ai",
+            "/dashboard",
+        ],
+    }
+
+
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(store_types.router, prefix="/store-types", tags=["store-types"])
 api_router.include_router(stores.router, prefix="/stores", tags=["stores"])
