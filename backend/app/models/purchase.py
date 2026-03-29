@@ -7,6 +7,7 @@ from datetime import datetime
 class Purchase(Base):
     __tablename__ = "purchases"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
     client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"))
     product_id: Mapped[str] = mapped_column(ForeignKey("products.id"))
     quantity: Mapped[int] = mapped_column(Integer, default=1)

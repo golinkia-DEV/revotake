@@ -15,6 +15,7 @@ const COLUMNS: { id: string; label: string; color: string }[] = [
   { id: "data_received", label: "Datos recibidos", color: "border-cyan-500/40" },
   { id: "sold", label: "Vendido", color: "border-green-500/40" },
   { id: "follow_up", label: "Seguimiento", color: "border-orange-500/40" },
+  { id: "no_response", label: "Sin respuesta", color: "border-rose-500/40" },
   { id: "closed", label: "Cerrado", color: "border-gray-500/40" },
 ];
 

@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from app.core.database import get_db
+from app.core.deps import StoreContext, require_store
 from app.models.ticket import Ticket, TicketType, TicketStatus
+from app.models.client import Client
 from app.models.user import User
 from app.api.v1.endpoints.auth import get_current_user
 
@@ -31,9 +33,13 @@ class TicketUpdate(BaseModel):
     extra_data: Optional[dict] = None
     due_date: Optional[datetime] = None
 
+async def _ensure_client_store(db: AsyncSession, client_id: str, store_id: str) -> bool:
+    r = await db.execute(select(Client.id).where(Client.id == client_id, Client.store_id == store_id))
+    return r.scalar_one_or_none() is not None
+
 @router.get("/")
-async def list_tickets(status: Optional[TicketStatus] = None, type: Optional[TicketType] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    query = select(Ticket)
+async def list_tickets(status: Optional[TicketStatus] = None, type: Optional[TicketType] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+    query = select(Ticket).where(Ticket.store_id == ctx.store_id)
     if status:
         query = query.where(Ticket.status == status)
     if type:
@@ -44,8 +50,8 @@ async def list_tickets(status: Optional[TicketStatus] = None, type: Optional[Tic
     return {"items": [{"id": t.id, "title": t.title, "type": t.type, "status": t.status, "priority": t.priority, "client_id": t.client_id, "due_date": t.due_date, "created_at": t.created_at} for t in tickets]}
 
 @router.get("/kanban")
-async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(Ticket).order_by(Ticket.created_at.desc()))
+async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+    result = await db.execute(select(Ticket).where(Ticket.store_id == ctx.store_id).order_by(Ticket.created_at.desc()))
     tickets = result.scalars().all()
     board = {}
     for status in TicketStatus:
@@ -53,29 +59,31 @@ async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = 
     return board
 
 @router.post("/")
-async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    ticket = Ticket(**data.model_dump())
+async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+    if data.client_id and not await _ensure_client_store(db, data.client_id, ctx.store_id):
+        raise HTTPException(400, "Cliente no pertenece a esta tienda")
+    ticket = Ticket(store_id=ctx.store_id, **data.model_dump())
     db.add(ticket)
-    await db.commit()
     return {"id": ticket.id, "title": ticket.title, "status": ticket.status}
 
 @router.put("/{ticket_id}")
-async def update_ticket(ticket_id: str, data: TicketUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+async def update_ticket(ticket_id: str, data: TicketUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id, Ticket.store_id == ctx.store_id))
     ticket = result.scalar_one_or_none()
     if not ticket:
         raise HTTPException(404, "Ticket not found")
-    for k, v in data.model_dump(exclude_none=True).items():
+    payload = data.model_dump(exclude_none=True)
+    if payload.get("client_id") and not await _ensure_client_store(db, payload["client_id"], ctx.store_id):
+        raise HTTPException(400, "Cliente no pertenece a esta tienda")
+    for k, v in payload.items():
         setattr(ticket, k, v)
-    await db.commit()
     return {"id": ticket.id, "status": ticket.status}
 
 @router.delete("/{ticket_id}")
-async def delete_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+async def delete_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id, Ticket.store_id == ctx.store_id))
     ticket = result.scalar_one_or_none()
     if not ticket:
         raise HTTPException(404)
     await db.delete(ticket)
-    await db.commit()
     return {"message": "Deleted"}

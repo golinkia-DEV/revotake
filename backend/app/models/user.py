@@ -18,3 +18,4 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(SAEnum(UserRole), default=UserRole.SELLER)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    store_memberships: Mapped[list["StoreMember"]] = relationship("StoreMember", back_populates="user")

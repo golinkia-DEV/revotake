@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_token
 from app.models.user import User, UserRole
+from app.core.config import settings
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -29,6 +30,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         user = result.scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="User inactive")
         return user
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -39,17 +42,20 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     user = result.scalar_one_or_none()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = create_access_token({"sub": user.id, "role": user.role})
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="User inactive")
+    token = create_access_token({"sub": user.id, "role": user.role.value})
     return {"access_token": token, "token_type": "bearer", "user": {"id": user.id, "name": user.name, "email": user.email, "role": user.role}}
 
 @router.post("/register")
 async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
+    if not settings.ALLOW_OPEN_REGISTRATION:
+        raise HTTPException(status_code=403, detail="Open registration is disabled")
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
     user = User(email=data.email, name=data.name, hashed_password=get_password_hash(data.password), role=data.role)
     db.add(user)
-    await db.commit()
     return {"message": "User created", "id": user.id}
 
 @router.get("/me")

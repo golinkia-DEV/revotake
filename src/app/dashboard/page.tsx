@@ -36,10 +36,11 @@ export default function DashboardPage() {
         <h1 className="text-3xl font-bold text-white mb-1">Dashboard</h1>
         <p className="text-gray-400">Resumen de operaciones</p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
         <StatCard label="Clientes totales" value={stats?.total_clients} icon={Users} color="bg-brand-600" href="/clients" />
         <StatCard label="Tickets abiertos" value={stats?.open_tickets} icon={Kanban} color="bg-purple-600" href="/kanban" />
-        <StatCard label="Alertas de stock" value={stats?.critical_stock_alerts} icon={AlertTriangle} color="bg-red-600" href="/products" />
+        <StatCard label="Stock crítico" value={stats?.critical_stock_alerts} icon={AlertTriangle} color="bg-red-600" href="/products" />
+        <StatCard label="Stock bajo" value={stats?.low_stock_alerts} icon={AlertTriangle} color="bg-amber-600" href="/products" />
         <StatCard label="Reuniones (7 dias)" value={stats?.upcoming_meetings_7d} icon={Calendar} color="bg-green-600" href="/calendar" />
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">

@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     ANTHROPIC_API_KEY: str = ""
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    ALLOW_OPEN_REGISTRATION: bool = False
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "https://revotake.vercel.app", "https://revotake.golinkia.com"]
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

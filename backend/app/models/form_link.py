@@ -7,6 +7,7 @@ from datetime import datetime
 class FormLink(Base):
     __tablename__ = "form_links"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
     token: Mapped[str] = mapped_column(String, unique=True, index=True, default=lambda: str(uuid.uuid4()))
     client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True)
     ticket_id: Mapped[str | None] = mapped_column(ForeignKey("tickets.id"), nullable=True)

@@ -2,13 +2,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Users, Kanban, Package, Calendar, Bot, Zap, LogOut, ChevronRight } from "lucide-react";
+import { LayoutDashboard, Users, Kanban, Package, Calendar, Bot, Zap, LogOut, ChevronRight, Building2 } from "lucide-react";
+import StoreSwitcher from "./StoreSwitcher";
 import { logout } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 
 const nav = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/stores", icon: Building2, label: "Tiendas" },
   { href: "/kanban", icon: Kanban, label: "Tablero Kanban" },
   { href: "/clients", icon: Users, label: "Clientes" },
   { href: "/calendar", icon: Calendar, label: "Agenda" },
@@ -37,6 +39,9 @@ export default function Sidebar() {
             <p className="text-xs text-gray-500 mt-0.5">Business Platform</p>
           </div>
         </div>
+      </div>
+      <div className="px-4 pt-2">
+        <StoreSwitcher />
       </div>
       <nav className="flex-1 p-4 space-y-1">
         {nav.map(({ href, icon: Icon, label }) => {

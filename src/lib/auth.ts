@@ -1,4 +1,5 @@
 import api from "./api";
+import { clearStoreId } from "./store";
 
 export interface User {
   id: string;
@@ -20,6 +21,7 @@ export async function login(email: string, password: string): Promise<User> {
 export function logout() {
   localStorage.removeItem("revotake_token");
   localStorage.removeItem("revotake_user");
+  clearStoreId();
 }
 
 export function getUser(): User | null {

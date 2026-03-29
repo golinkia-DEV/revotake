@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { login } from "@/lib/auth";
+import api from "@/lib/api";
+import { setStoreId } from "@/lib/store";
 import { toast } from "sonner";
 import { Zap, Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
 
@@ -18,7 +20,17 @@ export default function LoginPage() {
     try {
       await login(email, password);
       toast.success("Bienvenido a RevoTake");
-      router.push("/dashboard");
+      try {
+        const { data } = await api.get("/stores/");
+        if (data.items?.length) {
+          setStoreId(data.items[0].id);
+          router.push("/dashboard");
+          return;
+        }
+      } catch {
+        /* sin tiendas */
+      }
+      router.push("/stores");
     } catch {
       toast.error("Credenciales incorrectas");
     } finally {

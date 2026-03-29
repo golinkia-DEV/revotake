@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Calendar, Plus, Clock, Link2 } from "lucide-react";
-import api from "@/lib/api";
+import api, { API_URL } from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ interface MeetingItem {
   start_time: string;
   end_time: string;
   meeting_url: string | null;
+  ics_token: string;
 }
 
 export default function CalendarPage() {
@@ -75,7 +76,7 @@ export default function CalendarPage() {
                   <Link2 className="w-3 h-3" /> Entrar
                 </a>
               )}
-              <a href={`${process.env.NEXT_PUBLIC_API_URL}/meetings/${m.id}/ics`} className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors ml-auto">
+              <a href={`${API_URL}/meetings/ics/${m.ics_token}`} className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors ml-auto">
                 Descargar .ics
               </a>
             </div>
