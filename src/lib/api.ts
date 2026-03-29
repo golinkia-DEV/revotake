@@ -9,6 +9,8 @@ function needsStoreHeader(url: string, method: string | undefined): boolean {
   const m = (method || "get").toLowerCase();
   const path = (url || "").split("?")[0].replace(/\/+$/, "") || "/";
   if (path.startsWith("/auth")) return false;
+  if (path.startsWith("/public/")) return false;
+  if (path.startsWith("/webhooks/")) return false;
   if (path.startsWith("/store-types")) return false;
   if (path === "/stores" && (m === "get" || m === "post")) return false;
   return true;

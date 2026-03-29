@@ -15,6 +15,8 @@ const nav: { href: string; label: string; icon: string; filled?: boolean }[] = [
   { href: "/kanban", label: "Operaciones", icon: "settings_suggest", filled: true },
   { href: "/clients", label: "Clientes", icon: "group" },
   { href: "/calendar", label: "Agenda", icon: "calendar_today" },
+  { href: "/scheduling", label: "Citas", icon: "event_available", filled: true },
+  { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true },
   { href: "/products", label: "Inventario", icon: "inventory_2" },
   { href: "/ai", label: "Asistente IA", icon: "psychology", filled: true },
 ];

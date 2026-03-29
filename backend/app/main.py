@@ -9,13 +9,15 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.api.v1.router import api_router
 from app.services.meeting_reminders import process_meeting_reminders
+from app.services.appointment_notification_worker import process_scheduling_notifications
+from app.services.scheduling_booking import expire_pending_payment_holds
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async def worker():
+    async def worker_meetings():
         while True:
             try:
                 async with AsyncSessionLocal() as session:
@@ -27,13 +29,31 @@ async def lifespan(app: FastAPI):
                 logger.exception("Worker de recordatorios de citas")
             await asyncio.sleep(max(60, settings.MEETING_REMINDER_INTERVAL_SEC))
 
-    task = asyncio.create_task(worker())
+    async def worker_scheduling():
+        while True:
+            try:
+                async with AsyncSessionLocal() as session:
+                    expired = await expire_pending_payment_holds(session)
+                    n = await process_scheduling_notifications(session)
+                    await session.commit()
+                    if expired:
+                        logger.info("Citas pending_payment expiradas: %s", expired)
+                    if n:
+                        logger.info("Notificaciones de agenda enviadas: %s", n)
+            except Exception:
+                logger.exception("Worker de notificaciones de agenda")
+            await asyncio.sleep(max(30, min(120, settings.MEETING_REMINDER_INTERVAL_SEC)))
+
+    task_m = asyncio.create_task(worker_meetings())
+    task_s = asyncio.create_task(worker_scheduling())
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    task_m.cancel()
+    task_s.cancel()
+    for t in (task_m, task_s):
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(

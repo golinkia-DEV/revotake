@@ -1,0 +1,223 @@
+import enum
+import uuid
+from datetime import datetime, date, time
+
+from sqlalchemy import (
+    String,
+    DateTime,
+    Date,
+    Time,
+    Text,
+    JSON,
+    ForeignKey,
+    Boolean,
+    Integer,
+    Index,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.core.database import Base
+
+
+class AvailabilityRuleType(str, enum.Enum):
+    WEEKLY = "weekly"
+    EXCEPTION = "exception"
+
+
+class AppointmentStatus(str, enum.Enum):
+    PENDING_PAYMENT = "pending_payment"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+    NO_SHOW = "no_show"
+
+
+class PaymentMode(str, enum.Enum):
+    ONLINE = "online"
+    ON_SITE = "on_site"
+
+
+class PaymentStatus(str, enum.Enum):
+    PENDING = "pending"
+    PAID = "paid"
+    REFUNDED = "refunded"
+    WAIVED = "waived"
+    NOT_REQUIRED = "not_required"
+
+
+class NotificationChannel(str, enum.Enum):
+    EMAIL = "email"
+    SMS = "sms"
+    WHATSAPP = "whatsapp"
+
+
+class NotificationJobKind(str, enum.Enum):
+    REMINDER_24H = "reminder_24h"
+    REMINDER_1H = "reminder_1h"
+    BOOKING_CONFIRMATION = "booking_confirmation"
+
+
+class PaymentAttemptStatus(str, enum.Enum):
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
+class Branch(Base):
+    """Sucursal dentro de una tienda (tenant)."""
+    __tablename__ = "branches"
+    __table_args__ = (UniqueConstraint("store_id", "slug", name="uq_branch_store_slug"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(120), index=True)
+    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    settings: Mapped[dict] = mapped_column(JSON, default=dict)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class Professional(Base):
+    __tablename__ = "professionals"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class ProfessionalBranch(Base):
+    __tablename__ = "professional_branches"
+    __table_args__ = (UniqueConstraint("professional_id", "branch_id", name="uq_prof_branch"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
+    branch_id: Mapped[str] = mapped_column(ForeignKey("branches.id"), index=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Service(Base):
+    __tablename__ = "scheduling_services"
+    __table_args__ = (UniqueConstraint("store_id", "slug", name="uq_service_store_slug"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    slug: Mapped[str] = mapped_column(String(120))
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    buffer_before_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    buffer_after_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    price_cents: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str] = mapped_column(String(8), default="CLP")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class ProfessionalService(Base):
+    __tablename__ = "professional_services"
+    __table_args__ = (UniqueConstraint("professional_id", "service_id", name="uq_prof_service"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("scheduling_services.id"), index=True)
+
+
+class AvailabilityRule(Base):
+    """Horario semanal o excepción por fecha (cerrado o franja distinta)."""
+    __tablename__ = "availability_rules"
+    __table_args__ = (Index("ix_avail_prof_branch", "professional_id", "branch_id"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
+    branch_id: Mapped[str] = mapped_column(ForeignKey("branches.id"), index=True)
+    rule_type: Mapped[str] = mapped_column(String(32), default=AvailabilityRuleType.WEEKLY.value)
+    weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0=Mon .. 6=Sun, weekly only
+    specific_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class Holiday(Base):
+    __tablename__ = "scheduling_holidays"
+    __table_args__ = (Index("ix_holiday_store_date", "store_id", "holiday_date"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    branch_id: Mapped[str | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    holiday_date: Mapped[date] = mapped_column(Date, index=True)
+
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+    __table_args__ = (
+        Index("ix_appt_prof_start", "professional_id", "start_time"),
+        Index("ix_appt_store_start", "store_id", "start_time"),
+        Index("ix_appt_manage_token", "manage_token"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    branch_id: Mapped[str] = mapped_column(ForeignKey("branches.id"), index=True)
+    professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("scheduling_services.id"), index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    start_time: Mapped[datetime] = mapped_column(DateTime)
+    end_time: Mapped[datetime] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(32), default=AppointmentStatus.CONFIRMED.value, index=True)
+    payment_mode: Mapped[str] = mapped_column(String(32), default=PaymentMode.ON_SITE.value)
+    payment_status: Mapped[str] = mapped_column(String(32), default=PaymentStatus.NOT_REQUIRED.value)
+    manage_token: Mapped[str] = mapped_column(String(64), default=lambda: str(uuid.uuid4()), unique=True)
+    hold_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AppointmentAuditLog(Base):
+    __tablename__ = "appointment_audit_logs"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    appointment_id: Mapped[str] = mapped_column(ForeignKey("appointments.id"), index=True)
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    action: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
+class NotificationJob(Base):
+    __tablename__ = "notification_jobs"
+    __table_args__ = (Index("ix_notif_scheduled", "scheduled_at", "sent_at"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    appointment_id: Mapped[str] = mapped_column(ForeignKey("appointments.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))
+    channel: Mapped[str] = mapped_column(String(16), default=NotificationChannel.EMAIL.value)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class PaymentAttempt(Base):
+    __tablename__ = "payment_attempts"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    appointment_id: Mapped[str] = mapped_column(ForeignKey("appointments.id"), index=True)
+    provider: Mapped[str] = mapped_column(String(32))  # stripe, mercadopago
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(8), default="CLP")
+    status: Mapped[str] = mapped_column(String(32), default=PaymentAttemptStatus.PENDING.value)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)

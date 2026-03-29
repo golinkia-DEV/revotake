@@ -1,0 +1,194 @@
+"""Reserva atómica con bloqueo por profesional (PostgreSQL advisory lock)."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from typing import Any
+
+from sqlalchemy import select, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.scheduling import (
+    Appointment,
+    AppointmentStatus,
+    PaymentMode,
+    PaymentStatus,
+    NotificationJob,
+    NotificationJobKind,
+    NotificationChannel,
+    ProfessionalBranch,
+    Professional,
+)
+from app.services.scheduling_availability import load_service_for_professional
+
+
+async def _lock_professional(db: AsyncSession, professional_id: str, store_id: str) -> None:
+    r = await db.execute(
+        select(Professional)
+        .where(Professional.id == professional_id, Professional.store_id == store_id)
+        .with_for_update()
+    )
+    if r.scalar_one_or_none() is None:
+        raise ValueError("Profesional no encontrado")
+
+
+async def _has_overlap(
+    db: AsyncSession,
+    professional_id: str,
+    start: datetime,
+    end: datetime,
+    exclude_appointment_id: str | None = None,
+) -> bool:
+    now = datetime.utcnow()
+    active = (
+        AppointmentStatus.CONFIRMED.value,
+        AppointmentStatus.PENDING_PAYMENT.value,
+        AppointmentStatus.COMPLETED.value,
+    )
+    q = select(Appointment.id).where(
+        Appointment.professional_id == professional_id,
+        Appointment.status.in_(active),
+        Appointment.start_time < end,
+        Appointment.end_time > start,
+        or_(
+            Appointment.status != AppointmentStatus.PENDING_PAYMENT.value,
+            Appointment.hold_expires_at.is_(None),
+            Appointment.hold_expires_at > now,
+        ),
+    )
+    if exclude_appointment_id:
+        q = q.where(Appointment.id != exclude_appointment_id)
+    r = await db.execute(q)
+    return r.scalar_one_or_none() is not None
+
+
+async def create_appointment_booking(
+    db: AsyncSession,
+    *,
+    store_id: str,
+    branch_id: str,
+    professional_id: str,
+    service_id: str,
+    client_id: str | None,
+    start_time: datetime,
+    payment_mode: str,
+    notes: str | None = None,
+    hold_minutes: int = 15,
+) -> tuple[Appointment, dict[str, Any]]:
+    """
+    Crea cita; usa lock transaccional en el profesional.
+    payment_mode online -> pending_payment + hold; on_site -> confirmed + not_required.
+    """
+    pb = await db.execute(
+        select(ProfessionalBranch.id).where(
+            ProfessionalBranch.professional_id == professional_id,
+            ProfessionalBranch.branch_id == branch_id,
+        )
+    )
+    if pb.scalar_one_or_none() is None:
+        raise ValueError("Profesional no atiende en esta sucursal")
+
+    svc = await load_service_for_professional(db, store_id, professional_id, service_id)
+    if not svc:
+        raise ValueError("Servicio no disponible para este profesional")
+
+    await _lock_professional(db, professional_id, store_id)
+
+    delta = timedelta(
+        minutes=svc.duration_minutes + svc.buffer_before_minutes + svc.buffer_after_minutes
+    )
+    end_time = start_time + delta
+
+    if await _has_overlap(db, professional_id, start_time, end_time):
+        raise ValueError("El horario ya no está disponible")
+
+    if payment_mode == PaymentMode.ONLINE.value:
+        status = AppointmentStatus.PENDING_PAYMENT.value
+        pay_stat = PaymentStatus.PENDING.value
+        hold = datetime.utcnow() + timedelta(minutes=hold_minutes)
+    else:
+        status = AppointmentStatus.CONFIRMED.value
+        pay_stat = PaymentStatus.NOT_REQUIRED.value
+        hold = None
+
+    appt = Appointment(
+        store_id=store_id,
+        branch_id=branch_id,
+        professional_id=professional_id,
+        service_id=service_id,
+        client_id=client_id,
+        start_time=start_time,
+        end_time=end_time,
+        status=status,
+        payment_mode=payment_mode,
+        payment_status=pay_stat,
+        hold_expires_at=hold,
+        notes=notes,
+    )
+    db.add(appt)
+    await db.flush()
+
+    extra: dict[str, Any] = {"checkout": None}
+    if payment_mode == PaymentMode.ONLINE.value:
+        extra["checkout"] = {
+            "mock": True,
+            "message": "Integrar Stripe/Mercado Pago: usar POST /scheduling/payments/intent",
+            "appointment_id": appt.id,
+        }
+
+    return appt, extra
+
+
+async def expire_pending_payment_holds(db: AsyncSession) -> int:
+    """Libera citas pending_payment con hold vencido."""
+    from sqlalchemy import update
+
+    now = datetime.utcnow()
+    r = await db.execute(
+        update(Appointment)
+        .where(
+            Appointment.status == AppointmentStatus.PENDING_PAYMENT.value,
+            Appointment.hold_expires_at.is_not(None),
+            Appointment.hold_expires_at < now,
+        )
+        .values(status=AppointmentStatus.CANCELLED.value)
+    )
+    return r.rowcount or 0
+
+
+async def schedule_reminder_jobs(
+    db: AsyncSession,
+    store_id: str,
+    appointment_id: str,
+    start_time: datetime,
+) -> None:
+    """Encola recordatorios 24h y 1h antes (y confirmación inmediata opcional)."""
+    now = datetime.utcnow()
+    t24 = start_time - timedelta(hours=24)
+    t1 = start_time - timedelta(hours=1)
+
+    def add_job(kind: str, at: datetime) -> None:
+        if at <= now:
+            return
+        db.add(
+            NotificationJob(
+                store_id=store_id,
+                appointment_id=appointment_id,
+                kind=kind,
+                channel=NotificationChannel.EMAIL.value,
+                scheduled_at=at,
+                payload={},
+            )
+        )
+
+    add_job(NotificationJobKind.REMINDER_24H.value, t24)
+    add_job(NotificationJobKind.REMINDER_1H.value, t1)
+    db.add(
+        NotificationJob(
+            store_id=store_id,
+            appointment_id=appointment_id,
+            kind=NotificationJobKind.BOOKING_CONFIRMATION.value,
+            channel=NotificationChannel.EMAIL.value,
+            scheduled_at=now,
+            payload={},
+        )
+    )

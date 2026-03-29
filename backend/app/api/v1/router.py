@@ -1,5 +1,21 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, clients, tickets, products, meetings, forms, ai, dashboard, store_types, stores, internal
+from app.api.v1.endpoints import (
+    auth,
+    clients,
+    tickets,
+    products,
+    meetings,
+    forms,
+    ai,
+    dashboard,
+    store_types,
+    stores,
+    internal,
+    scheduling_admin,
+    scheduling_staff,
+    scheduling_public,
+    scheduling_webhooks,
+)
 
 api_router = APIRouter()
 
@@ -22,6 +38,9 @@ async def api_v1_root():
             "/ai",
             "/dashboard",
             "/internal",
+            "/scheduling",
+            "/public/scheduling",
+            "/webhooks/scheduling",
         ],
     }
 
@@ -37,3 +56,7 @@ api_router.include_router(forms.router, prefix="/forms", tags=["forms"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(internal.router, prefix="/internal", tags=["internal"])
+api_router.include_router(scheduling_admin.router, prefix="/scheduling", tags=["scheduling"])
+api_router.include_router(scheduling_staff.router, prefix="/scheduling", tags=["scheduling-staff"])
+api_router.include_router(scheduling_public.router, prefix="/public/scheduling", tags=["scheduling-public"])
+api_router.include_router(scheduling_webhooks.router, prefix="/webhooks/scheduling", tags=["webhooks-scheduling"])

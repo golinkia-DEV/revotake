@@ -7,3 +7,24 @@ from app.models.product import Product
 from app.models.purchase import Purchase
 from app.models.form_link import FormLink
 from app.models.meeting import Meeting, MeetingConfirmationStatus
+from app.models.scheduling import (
+    Branch,
+    Professional,
+    ProfessionalBranch,
+    Service as SchedulingService,
+    ProfessionalService,
+    AvailabilityRule,
+    Holiday,
+    Appointment,
+    AppointmentAuditLog,
+    NotificationJob,
+    PaymentAttempt,
+    AvailabilityRuleType,
+    AppointmentStatus,
+    PaymentMode,
+    PaymentStatus,
+    NotificationChannel,
+    NotificationJobKind,
+    PaymentAttemptStatus,
+)
+from app.models.client_document import ClientDocument

@@ -1,11 +1,22 @@
 import asyncio
 from app.core.database import engine, Base
 from app.models import User, UserRole, StoreType, Store, StoreMember
+from app.models.scheduling import (
+    Branch,
+    Professional,
+    ProfessionalBranch,
+    Service as SchedulingService,
+    ProfessionalService,
+    AvailabilityRule,
+    AvailabilityRuleType,
+)
+from app.models.client_document import ClientDocument  # noqa: F401 — registro en metadata
 from app.models.store import StoreMemberRole
 from app.core.security import get_password_hash
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select, text
+from datetime import time
 
 from app.core.config import settings
 
@@ -147,6 +158,59 @@ async def init_db():
             session.add(StoreMember(user_id=user.id, store_id=store.id, role=StoreMemberRole.ADMIN))
             await session.commit()
             print("Admin linked to demo store")
+
+        br = await session.execute(select(Branch).where(Branch.store_id == store.id, Branch.slug == "sede-central"))
+        branch = br.scalar_one_or_none()
+        if not branch:
+            branch = Branch(
+                store_id=store.id,
+                name="Sede central",
+                slug="sede-central",
+                timezone="UTC",
+            )
+            session.add(branch)
+            await session.flush()
+            prof = Professional(store_id=store.id, name="Profesional demo", email="demo@revotake.com")
+            session.add(prof)
+            await session.flush()
+            session.add(ProfessionalBranch(professional_id=prof.id, branch_id=branch.id, is_primary=True))
+            svc = SchedulingService(
+                store_id=store.id,
+                name="Consulta general",
+                slug="consulta-general",
+                duration_minutes=30,
+                buffer_before_minutes=0,
+                buffer_after_minutes=0,
+                price_cents=15000,
+                currency="CLP",
+            )
+            session.add(svc)
+            await session.flush()
+            session.add(ProfessionalService(professional_id=prof.id, service_id=svc.id))
+            for wd in range(0, 5):
+                session.add(
+                    AvailabilityRule(
+                        professional_id=prof.id,
+                        branch_id=branch.id,
+                        rule_type=AvailabilityRuleType.WEEKLY.value,
+                        weekday=wd,
+                        start_time=time(9, 0),
+                        end_time=time(18, 0),
+                        is_closed=False,
+                    )
+                )
+            await session.commit()
+            print("Scheduling demo: branch, professional, service, availability seeded")
+
+        # Vincular profesional demo al admin para probar "Mi agenda"
+        pr_link = await session.execute(
+            select(Professional).where(Professional.store_id == store.id, Professional.name == "Profesional demo")
+        )
+        prof_demo = pr_link.scalar_one_or_none()
+        if prof_demo and not prof_demo.user_id:
+            prof_demo.user_id = user.id
+            await session.commit()
+            print("Profesional demo vinculado al usuario admin (Mi agenda)")
 
 if __name__ == "__main__":
     asyncio.run(init_db())
