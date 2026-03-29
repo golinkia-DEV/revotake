@@ -72,6 +72,50 @@ async def _migrate_meeting_confirmation_columns():
             )
         )
 
+
+async def _migrate_meetings_store_id():
+    """Bases antiguas: la tabla meetings no tenía store_id; el modelo y el worker lo requieren."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    async with engine.begin() as conn:
+        await conn.execute(text("ALTER TABLE meetings ADD COLUMN IF NOT EXISTS store_id VARCHAR;"))
+        await conn.execute(
+            text(
+                """
+                UPDATE meetings m
+                SET store_id = c.store_id
+                FROM clients c
+                WHERE m.store_id IS NULL AND m.client_id IS NOT NULL AND c.id = m.client_id
+                """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+                UPDATE meetings
+                SET store_id = (SELECT id FROM stores ORDER BY created_at ASC NULLS LAST LIMIT 1)
+                WHERE store_id IS NULL
+                """
+            )
+        )
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meetings_store_id ON meetings (store_id);"))
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE meetings ALTER COLUMN store_id SET NOT NULL"))
+    except Exception as e:
+        print("Aviso meetings.store_id NOT NULL:", e)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "ALTER TABLE meetings ADD CONSTRAINT meetings_store_id_fkey "
+                    "FOREIGN KEY (store_id) REFERENCES stores (id)"
+                )
+            )
+    except Exception as e:
+        print("Aviso meetings.store_id FK:", e)
+
+
 STORE_TYPE_SEEDS = [
     {
         "name": "Comercio minorista",
@@ -125,6 +169,10 @@ async def init_db():
         await _migrate_meeting_confirmation_columns()
     except Exception as e:
         print("Aviso migración meetings:", e)
+    try:
+        await _migrate_meetings_store_id()
+    except Exception as e:
+        print("Aviso migración meetings.store_id:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:
