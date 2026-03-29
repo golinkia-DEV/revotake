@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getStoreId } from "./store";
+import { clearStoreId, getStoreId } from "./store";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1";
 
@@ -30,6 +30,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
       localStorage.removeItem("revotake_token");
+      localStorage.removeItem("revotake_user");
+      clearStoreId();
       window.location.href = "/login";
     }
     return Promise.reject(error);

@@ -27,8 +27,10 @@ class TicketCreate(BaseModel):
 class TicketUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    type: Optional[TicketType] = None
     status: Optional[TicketStatus] = None
     priority: Optional[str] = None
+    client_id: Optional[str] = None
     assigned_to: Optional[str] = None
     extra_data: Optional[dict] = None
     due_date: Optional[datetime] = None

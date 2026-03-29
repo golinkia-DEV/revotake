@@ -35,6 +35,16 @@ class StoreUpdate(BaseModel):
     settings: Optional[dict] = None
 
 
+def _deep_merge_settings(base: dict, update: dict) -> dict:
+    out = dict(base)
+    for k, v in update.items():
+        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
+            out[k] = _deep_merge_settings(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
 @router.get("/")
 async def my_stores(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     q = (
@@ -127,7 +137,5 @@ async def update_store(
     if data.name is not None:
         store.name = data.name.strip()
     if data.settings is not None:
-        merged = dict(store.settings or {})
-        merged.update(data.settings)
-        store.settings = merged
+        store.settings = _deep_merge_settings(dict(store.settings or {}), data.settings)
     return {"id": store.id, "name": store.name, "settings": store.settings}
