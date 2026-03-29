@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Calendar } from "lucide-react";
@@ -24,9 +24,10 @@ interface TicketItem {
   priority: string;
   client_id: string | null;
   due_date: string | null;
+  extra_data?: { appointment_id?: string; list_price_cents?: number };
 }
 
-function TicketCard({ ticket, index }: { ticket: TicketItem; index: number }) {
+const TicketCard = memo(function TicketCard({ ticket, index }: { ticket: TicketItem; index: number }) {
   return (
     <Draggable draggableId={ticket.id} index={index}>
       {(provided, snapshot) => (
@@ -46,6 +47,9 @@ function TicketCard({ ticket, index }: { ticket: TicketItem; index: number }) {
             </span>
             <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">{ticket.type}</span>
           </div>
+          {ticket.extra_data?.appointment_id && (
+            <p className="mt-2 text-xs font-medium text-blue-700 dark:text-blue-300">Vinculada a cita en agenda</p>
+          )}
           {ticket.due_date && (
             <div className="mt-2 flex items-center gap-1 text-xs text-slate-500">
               <Calendar className="h-3 w-3" />
@@ -56,7 +60,7 @@ function TicketCard({ ticket, index }: { ticket: TicketItem; index: number }) {
       )}
     </Draggable>
   );
-}
+});
 
 export default function KanbanPage() {
   const qc = useQueryClient();

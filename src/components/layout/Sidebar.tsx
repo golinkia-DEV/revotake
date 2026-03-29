@@ -16,6 +16,7 @@ const nav: { href: string; label: string; icon: string; filled?: boolean }[] = [
   { href: "/clients", label: "Clientes", icon: "group" },
   { href: "/calendar", label: "Agenda", icon: "calendar_today" },
   { href: "/scheduling", label: "Citas", icon: "event_available", filled: true },
+  { href: "/scheduling/panel", label: "Panel atención", icon: "clinical_notes", filled: true },
   { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true },
   { href: "/products", label: "Inventario", icon: "inventory_2" },
   { href: "/ai", label: "Asistente IA", icon: "psychology", filled: true },

@@ -7,7 +7,7 @@ from typing import Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ConfigDict
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -26,8 +26,10 @@ from app.core.permissions import (
 from app.models.user import User
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.client import Client
+from app.models.product import Product
 from app.models.store import StoreMember
 from app.models.client_document import ClientDocument
+from app.models.ticket import Ticket, TicketStatus
 from app.models.scheduling import (
     Branch,
     Professional,
@@ -205,6 +207,8 @@ class ServiceCreate(BaseModel):
     buffer_after_minutes: int = 0
     price_cents: int = 0
     currency: str = "CLP"
+    product_id: Optional[str] = None
+    allow_price_override: bool = True
 
 
 @router.get("/services")
@@ -227,6 +231,8 @@ async def list_services(
                 "buffer_after_minutes": s.buffer_after_minutes,
                 "price_cents": s.price_cents,
                 "currency": s.currency,
+                "product_id": s.product_id,
+                "allow_price_override": s.allow_price_override,
                 "is_active": s.is_active,
             }
             for s in rows
@@ -241,6 +247,11 @@ async def create_service(
     ctx: StoreContext = Depends(require_store_admin),
 ):
     slug = _slugify(data.slug or data.name)
+    pid = data.product_id
+    if pid:
+        pr = await db.get(Product, pid)
+        if not pr or pr.store_id != ctx.store_id:
+            raise HTTPException(400, "Producto no pertenece a esta tienda")
     s = Service(
         store_id=ctx.store_id,
         name=data.name.strip(),
@@ -250,10 +261,52 @@ async def create_service(
         buffer_after_minutes=data.buffer_after_minutes,
         price_cents=data.price_cents,
         currency=data.currency,
+        product_id=pid,
+        allow_price_override=data.allow_price_override,
     )
     db.add(s)
     await db.flush()
     return {"id": s.id, "slug": s.slug}
+
+
+class ServicePatch(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    buffer_before_minutes: Optional[int] = None
+    buffer_after_minutes: Optional[int] = None
+    price_cents: Optional[int] = None
+    currency: Optional[str] = None
+    product_id: Optional[str] = None
+    allow_price_override: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+
+@router.patch("/services/{service_id}")
+async def patch_service(
+    service_id: str,
+    data: ServicePatch,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_admin),
+):
+    s = await db.get(Service, service_id)
+    if not s or s.store_id != ctx.store_id:
+        raise HTTPException(404, "No encontrado")
+    raw = data.model_dump(exclude_unset=True)
+    if "product_id" in raw:
+        pid = raw["product_id"]
+        if pid is None or pid == "":
+            s.product_id = None
+        else:
+            pr = await db.get(Product, pid)
+            if not pr or pr.store_id != ctx.store_id:
+                raise HTTPException(400, "Producto inválido")
+            s.product_id = pid
+        del raw["product_id"]
+    for k, v in raw.items():
+        setattr(s, k, v)
+    return {"id": s.id}
 
 
 class LinkProfService(BaseModel):
@@ -459,7 +512,12 @@ async def list_appointments(
     branch_id: Optional[str] = None,
     status: Optional[str] = None,
 ):
-    q = select(Appointment).where(Appointment.store_id == ctx.store_id).order_by(Appointment.start_time)
+    q = (
+        select(Appointment, Service.price_cents, Service.allow_price_override)
+        .outerjoin(Service, Service.id == Appointment.service_id)
+        .where(Appointment.store_id == ctx.store_id)
+        .order_by(Appointment.start_time)
+    )
     if from_date:
         q = q.where(Appointment.start_time >= datetime(from_date.year, from_date.month, from_date.day))
     if to_date:
@@ -472,9 +530,11 @@ async def list_appointments(
     if status:
         q = q.where(Appointment.status == status)
     r = await db.execute(q)
-    rows = r.scalars().all()
     out = []
-    for a in rows:
+    for row in r.all():
+        a = row[0]
+        price_c = row[1]
+        allow_po = row[2]
         out.append(
             {
                 "id": a.id,
@@ -488,6 +548,11 @@ async def list_appointments(
                 "payment_mode": a.payment_mode,
                 "payment_status": a.payment_status,
                 "manage_token": a.manage_token,
+                "ticket_id": a.ticket_id,
+                "charged_price_cents": a.charged_price_cents,
+                "session_closed_at": a.session_closed_at.isoformat() if a.session_closed_at else None,
+                "service_price_cents": int(price_c) if price_c is not None else None,
+                "allow_price_override": True if allow_po is None else bool(allow_po),
             }
         )
     return {"items": out}
@@ -533,6 +598,7 @@ async def create_admin_appointment(
 class AppointmentPatch(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
+    charged_price_cents: Optional[int] = None
 
 
 @router.patch("/appointments/{appointment_id}")
@@ -546,20 +612,238 @@ async def patch_appointment(
     a = await db.get(Appointment, appointment_id)
     if not a or a.store_id != ctx.store_id:
         raise HTTPException(404, "No encontrada")
-    prev = {"status": a.status, "notes": a.notes}
+    prev = {"status": a.status, "notes": a.notes, "charged_price_cents": a.charged_price_cents}
+    if data.charged_price_cents is not None:
+        a.charged_price_cents = data.charged_price_cents
     if data.status is not None:
         a.status = data.status
     if data.notes is not None:
         a.notes = data.notes
+
+    if a.status == AppointmentStatus.COMPLETED.value:
+        svc = await db.get(Service, a.service_id)
+        if a.charged_price_cents is None:
+            a.charged_price_cents = int(svc.price_cents) if svc else 0
+        a.session_closed_at = datetime.utcnow()
+        if a.ticket_id:
+            tk = await db.get(Ticket, a.ticket_id)
+            if tk and tk.store_id == ctx.store_id:
+                tk.status = TicketStatus.CLOSED
+
     await log_appointment_action(
         db,
         appointment_id=a.id,
         store_id=ctx.store_id,
         action="admin_patch",
         actor_user_id=user.id,
-        payload={"before": prev, "after": {"status": a.status, "notes": a.notes}},
+        payload={
+            "before": prev,
+            "after": {
+                "status": a.status,
+                "notes": a.notes,
+                "charged_price_cents": a.charged_price_cents,
+                "session_closed_at": a.session_closed_at.isoformat() if a.session_closed_at else None,
+            },
+        },
     )
-    return {"id": a.id, "status": a.status}
+    return {
+        "id": a.id,
+        "status": a.status,
+        "charged_price_cents": a.charged_price_cents,
+        "ticket_id": a.ticket_id,
+    }
+
+
+def _appt_alert_item(a: Appointment, cname: str | None, sname: str | None, pname: str | None) -> dict:
+    return {
+        "appointment_id": a.id,
+        "client_name": cname or "—",
+        "service_name": sname or "—",
+        "professional_name": pname or "—",
+        "start_time": a.start_time.isoformat(),
+        "end_time": a.end_time.isoformat(),
+        "ticket_id": a.ticket_id,
+    }
+
+
+# --- Panel atención (trabajadores, ventas por servicio, clientes recurrentes, alertas) ---
+
+
+@router.get("/panel")
+async def scheduling_operations_panel(
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_AGENDA_TIENDA, VER_REPORTES)),
+):
+    sid = ctx.store_id
+    now = datetime.utcnow()
+    win_start = now - timedelta(days=90)
+    t15 = now + timedelta(minutes=15)
+    t30 = now - timedelta(minutes=30)
+    t60 = now - timedelta(minutes=60)
+
+    vol_sub = (
+        select(
+            Appointment.professional_id.label("pid"),
+            func.count(Appointment.id).label("v"),
+        )
+        .where(
+            Appointment.store_id == sid,
+            Appointment.start_time >= win_start,
+            Appointment.status != AppointmentStatus.CANCELLED.value,
+        )
+        .group_by(Appointment.professional_id)
+        .subquery()
+    )
+    rev_sub = (
+        select(
+            Appointment.professional_id.label("pid"),
+            func.coalesce(
+                func.sum(
+                    func.coalesce(Appointment.charged_price_cents, Service.price_cents, 0)
+                ),
+                0,
+            ).label("r"),
+        )
+        .join(Service, Service.id == Appointment.service_id)
+        .where(
+            Appointment.store_id == sid,
+            Appointment.start_time >= win_start,
+            Appointment.status == AppointmentStatus.COMPLETED.value,
+        )
+        .group_by(Appointment.professional_id)
+        .subquery()
+    )
+    staff_rows = await db.execute(
+        select(
+            Professional.id,
+            Professional.name,
+            func.coalesce(vol_sub.c.v, 0),
+            func.coalesce(rev_sub.c.r, 0),
+        )
+        .outerjoin(vol_sub, vol_sub.c.pid == Professional.id)
+        .outerjoin(rev_sub, rev_sub.c.pid == Professional.id)
+        .where(Professional.store_id == sid)
+        .order_by(Professional.name)
+    )
+    staff_out = [
+        {
+            "professional_id": pid,
+            "name": pname,
+            "appointments_count_90d": int(v or 0),
+            "revenue_cents_completed_90d": int(r or 0),
+        }
+        for pid, pname, v, r in staff_rows.all()
+    ]
+    staff_out.sort(key=lambda x: x["revenue_cents_completed_90d"], reverse=True)
+
+    svc_sales = await db.execute(
+        select(
+            Service.id,
+            Service.name,
+            func.count(Appointment.id),
+            func.coalesce(
+                func.sum(func.coalesce(Appointment.charged_price_cents, Service.price_cents, 0)),
+                0,
+            ),
+        )
+        .join(Appointment, Appointment.service_id == Service.id)
+        .where(
+            Appointment.store_id == sid,
+            Service.store_id == sid,
+            Appointment.start_time >= win_start,
+            Appointment.status == AppointmentStatus.COMPLETED.value,
+        )
+        .group_by(Service.id, Service.name)
+    )
+    services_ranked = [
+        {
+            "service_id": row[0],
+            "name": row[1],
+            "completed_count": int(row[2]),
+            "revenue_cents": int(row[3] or 0),
+        }
+        for row in svc_sales.all()
+    ]
+    services_ranked.sort(key=lambda x: x["revenue_cents"], reverse=True)
+
+    repeat_q = await db.execute(
+        select(Client.id, Client.name, func.count(Appointment.id))
+        .join(Appointment, Appointment.client_id == Client.id)
+        .where(
+            Client.store_id == sid,
+            Appointment.store_id == sid,
+            Appointment.start_time >= win_start,
+            Appointment.status.in_(
+                [AppointmentStatus.CONFIRMED.value, AppointmentStatus.COMPLETED.value]
+            ),
+        )
+        .group_by(Client.id, Client.name)
+        .having(func.count(Appointment.id) >= 2)
+        .order_by(func.count(Appointment.id).desc())
+        .limit(80)
+    )
+    repeat_clients = [
+        {"client_id": cid, "name": cname, "visits": int(cnt)} for cid, cname, cnt in repeat_q.all()
+    ]
+
+    base_confirmed = and_(
+        Appointment.store_id == sid,
+        Appointment.status == AppointmentStatus.CONFIRMED.value,
+    )
+    # Una sola consulta: citas en curso, fin próximo o cierre atrasado (antes eran 4 round-trips).
+    op_filter = or_(
+        and_(Appointment.start_time <= now, Appointment.end_time > now),
+        and_(Appointment.end_time > now, Appointment.end_time <= t15),
+        and_(Appointment.end_time <= t30, Appointment.end_time > t60),
+        Appointment.end_time <= t60,
+    )
+    r_live = await db.execute(
+        select(Appointment, Client.name, Service, Professional.name)
+        .outerjoin(Client, Client.id == Appointment.client_id)
+        .join(Service, Service.id == Appointment.service_id)
+        .join(Professional, Professional.id == Appointment.professional_id)
+        .where(base_confirmed, op_filter)
+    )
+    ending_soon = []
+    overdue_30m = []
+    overdue_60m = []
+    active_sessions = []
+    for a, cname, svc, pname in r_live.all():
+        end = a.end_time
+        sname = svc.name if svc else None
+        if end > now and end <= t15:
+            ending_soon.append(_appt_alert_item(a, cname, sname, pname))
+        if end <= t30 and end > t60:
+            overdue_30m.append(_appt_alert_item(a, cname, sname, pname))
+        if end <= t60:
+            overdue_60m.append(_appt_alert_item(a, cname, sname, pname))
+        if a.start_time <= now and end > now:
+            active_sessions.append(
+                {
+                    **_appt_alert_item(a, cname, sname, pname),
+                    "list_price_cents": svc.price_cents if svc else 0,
+                    "allow_price_override": svc.allow_price_override if svc else True,
+                    "currency": svc.currency if svc else "CLP",
+                }
+            )
+    ending_soon.sort(key=lambda x: x["end_time"])
+    overdue_30m.sort(key=lambda x: x["end_time"])
+    overdue_60m.sort(key=lambda x: x["end_time"])
+    active_sessions.sort(key=lambda x: x["start_time"])
+
+    return {
+        "range_days": 90,
+        "staff": staff_out,
+        "services_by_revenue": services_ranked,
+        "repeat_clients": repeat_clients,
+        "alerts": {
+            "ending_soon": ending_soon,
+            "overdue_close_30_60m": overdue_30m,
+            "overdue_close_60m_plus": overdue_60m,
+        },
+        "active_sessions": active_sessions,
+        "server_time_utc": now.isoformat(),
+    }
 
 
 # --- Dashboard ---

@@ -10,6 +10,7 @@ from app.core.database import AsyncSessionLocal
 from app.api.v1.router import api_router
 from app.services.meeting_reminders import process_meeting_reminders
 from app.services.appointment_notification_worker import process_scheduling_notifications
+from app.services.appointment_session_worker import process_appointment_sessions
 from app.services.scheduling_booking import expire_pending_payment_holds
 
 logger = logging.getLogger(__name__)
@@ -35,11 +36,14 @@ async def lifespan(app: FastAPI):
                 async with AsyncSessionLocal() as session:
                     expired = await expire_pending_payment_holds(session)
                     n = await process_scheduling_notifications(session)
+                    sess_tickets = await process_appointment_sessions(session)
                     await session.commit()
                     if expired:
                         logger.info("Citas pending_payment expiradas: %s", expired)
                     if n:
                         logger.info("Notificaciones de agenda enviadas: %s", n)
+                    if sess_tickets:
+                        logger.info("Fichas de atención abiertas (citas en curso): %s", sess_tickets)
             except Exception:
                 logger.exception("Worker de notificaciones de agenda")
             await asyncio.sleep(max(30, min(120, settings.MEETING_REMINDER_INTERVAL_SEC)))

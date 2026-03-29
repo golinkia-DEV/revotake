@@ -5,7 +5,20 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
-import { Building2, Plus, ArrowRight, Settings2, Loader2, LayoutGrid, Sparkles, ChevronRight, Info } from "lucide-react";
+import axios from "axios";
+import {
+  Building2,
+  Plus,
+  ArrowRight,
+  Settings2,
+  Loader2,
+  LayoutGrid,
+  Sparkles,
+  ChevronRight,
+  Info,
+  Users,
+  FileSpreadsheet,
+} from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { toast } from "sonner";
@@ -57,6 +70,9 @@ export default function StoresPage() {
   const [configWorkflowNotes, setConfigWorkflowNotes] = useState("");
   const [storeProfile, setStoreProfile] = useState<StoreProfile>(() => emptyStoreProfile());
   const [profileConfig, setProfileConfig] = useState<StoreProfile>(() => emptyStoreProfile());
+  /** Paso de listado de clientes: omitir o pegar texto / CSV para IA */
+  const [clientImportMode, setClientImportMode] = useState<"skip" | "paste">("skip");
+  const [clientImportText, setClientImportText] = useState("");
   const wizardStep6Prefilled = useRef(false);
 
   const { data: types } = useQuery({
@@ -107,7 +123,7 @@ export default function StoresPage() {
   }, [configStore]);
 
   const create = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const typeDefaults = (types?.items as StoreTypeItem[] | undefined)?.find((t) => t.id === typeId)?.default_settings || {};
       const aiBase = (typeDefaults.ai as Record<string, string>) || {};
       const agendaBase = (typeDefaults.agenda as Record<string, number>) || {};
@@ -125,17 +141,47 @@ export default function StoresPage() {
           reminder_hours_before: Math.max(1, Math.min(168, reminderHours)),
         },
       };
-      return api.post("/stores/", { name: name.trim(), store_type_id: typeId, settings_override });
+      const res = await api.post("/stores/", { name: name.trim(), store_type_id: typeId, settings_override });
+      const newId = res.data.id as string;
+      setStoreId(newId);
+
+      let imported = 0;
+      let importError: string | null = null;
+      const raw = clientImportMode === "paste" ? clientImportText.trim() : "";
+      if (raw.length > 0) {
+        try {
+          const ir = await api.post<{ created: number }>(
+            "/clients/import-ai",
+            { raw_text: raw.slice(0, 400_000) },
+            { headers: { "X-Store-Id": newId } }
+          );
+          imported = typeof ir.data?.created === "number" ? ir.data.created : 0;
+        } catch (e: unknown) {
+          const d = axios.isAxiosError(e) ? e.response?.data?.detail : null;
+          importError =
+            typeof d === "string" ? d : d != null ? JSON.stringify(d) : e instanceof Error ? e.message : "Error al importar con IA";
+        }
+      }
+      return { imported, importError };
     },
-    onSuccess: (res) => {
+    onSuccess: ({ imported, importError }) => {
       qc.invalidateQueries({ queryKey: ["my-stores"] });
-      setStoreId(res.data.id);
+      qc.invalidateQueries({ queryKey: ["clients"] });
       setName("");
       setWorkflowNotes("");
       setWizardStep(1);
       setStoreProfile(emptyStoreProfile());
+      setClientImportMode("skip");
+      setClientImportText("");
       setShowForm(false);
-      toast.success("Tienda creada");
+      toast.success(
+        imported > 0
+          ? `Tienda creada. La IA organizó e importó ${imported} perfil${imported === 1 ? "" : "es"} de cliente.`
+          : "Tienda creada"
+      );
+      if (importError) {
+        toast.error(`La tienda quedó creada, pero la importación de clientes falló: ${importError}`);
+      }
       router.push("/dashboard");
     },
     onError: () => toast.error("No se pudo crear la tienda"),
@@ -200,6 +246,8 @@ export default function StoresPage() {
               setDurationMin(30);
               setReminderHours(24);
               setStoreProfile(emptyStoreProfile());
+              setClientImportMode("skip");
+              setClientImportText("");
             }
           }}
           className="btn-primary flex items-center gap-2 self-start"
@@ -217,11 +265,11 @@ export default function StoresPage() {
                 Asistente: nueva tienda
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Paso {wizardStep} de 7 · Datos tributarios, local, horarios, comodidades, operaciones e IA.
+                Paso {wizardStep} de 8 · Incluye importación opcional de clientes con IA (Excel o pegado).
               </p>
             </div>
             <div className="flex flex-wrap gap-1">
-              {[1, 2, 3, 4, 5, 6, 7].map((s) => (
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
                 <span
                   key={s}
                   className={clsx(
@@ -428,6 +476,96 @@ export default function StoresPage() {
 
           {wizardStep === 7 && (
             <div className="space-y-4">
+              <div className="rounded-xl border border-violet-200/80 bg-violet-50/50 p-4">
+                <p className="text-sm font-semibold text-violet-950 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-violet-600" />
+                  ¿Tienes ya un listado de clientes?
+                </p>
+                <p className="mt-2 text-sm text-violet-900/85">
+                  Podés pegar una tabla copiada desde <strong>Excel</strong> (Ctrl+C en las celdas), un <strong>CSV</strong> exportado o cualquier listado con
+                  columnas. La <strong>IA</strong> interpreta encabezados y filas, arma nombre, correo, teléfono, dirección, notas y guarda el resto en{" "}
+                  <strong>campos personalizados</strong> del perfil de cada cliente.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientImportMode("skip");
+                    setClientImportText("");
+                  }}
+                  className={clsx(
+                    "rounded-2xl border p-4 text-left transition-all",
+                    clientImportMode === "skip" ? "border-primary bg-primary/5 ring-2 ring-primary/30" : "border-slate-200 hover:border-slate-300"
+                  )}
+                >
+                  <span className="font-semibold text-on-surface">No, después los agrego</span>
+                  <p className="mt-1 text-xs text-slate-600">Seguís al resumen y creás la tienda sin importar.</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClientImportMode("paste")}
+                  className={clsx(
+                    "rounded-2xl border p-4 text-left transition-all",
+                    clientImportMode === "paste" ? "border-primary bg-primary/5 ring-2 ring-primary/30" : "border-slate-200 hover:border-slate-300"
+                  )}
+                >
+                  <span className="font-semibold text-on-surface inline-flex items-center gap-2">
+                    <FileSpreadsheet className="h-4 w-4 text-primary" />
+                    Sí, pegar o subir texto
+                  </span>
+                  <p className="mt-1 text-xs text-slate-600">Incluí encabezados; hasta ~120 filas por creación.</p>
+                </button>
+              </div>
+              {clientImportMode === "paste" && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="btn-ghost inline-flex cursor-pointer items-center gap-2 text-sm">
+                      <input
+                        type="file"
+                        accept=".csv,.txt,text/csv,text/plain"
+                        className="sr-only"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!f) return;
+                          const reader = new FileReader();
+                          reader.onload = () => setClientImportText(String(reader.result ?? ""));
+                          reader.readAsText(f);
+                        }}
+                      />
+                      Elegir archivo .csv o .txt
+                    </label>
+                    <span className="text-xs text-slate-500">Desde Excel: Archivo → Guardar como CSV, o copiar la tabla y pegar abajo.</span>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">Pegar listado completo</label>
+                    <textarea
+                      value={clientImportText}
+                      onChange={(e) => setClientImportText(e.target.value.slice(0, 400_000))}
+                      className="input-field min-h-[200px] font-mono text-xs"
+                      placeholder={"Nombre\tEmail\tTeléfono\nMaría Pérez\tmaria@mail.com\t+56912345678\n…"}
+                      maxLength={400_000}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      {clientImportText.length.toLocaleString("es-CL")} / 400.000 caracteres · La IA se ejecuta al pulsar «Crear tienda» en el siguiente paso.
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setWizardStep(6)} className="btn-ghost">
+                  Atrás
+                </button>
+                <button type="button" onClick={() => setWizardStep(8)} className="btn-primary inline-flex items-center gap-1">
+                  Siguiente <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {wizardStep === 8 && (
+            <div className="space-y-4">
               <p className="text-sm text-slate-600">Revisa y crea la tienda. Los datos de local y comodidades se mostrarán a quienes reserven por tu enlace público.</p>
               <ul className="space-y-2 rounded-xl border border-slate-200 bg-white/60 p-4 text-sm text-slate-700 max-h-[min(60vh,420px)] overflow-y-auto">
                 <li>
@@ -473,9 +611,17 @@ export default function StoresPage() {
                 <li>
                   <strong>Recordatorio citas:</strong> {reminderHours} h antes · duración por defecto {durationMin} min
                 </li>
+                <li>
+                  <strong>Clientes (IA):</strong>{" "}
+                  {clientImportMode === "paste"
+                    ? clientImportText.trim()
+                      ? `Se importará el listado (${clientImportText.trim().split(/\r?\n/).length.toLocaleString("es-CL")} líneas aprox.); la IA armará perfiles con lo que reconozca.`
+                      : "Elegiste importar pero el texto está vacío: no se importará nada."
+                    : "Sin importación en este momento."}
+                </li>
               </ul>
               <div className="flex flex-wrap gap-3 pt-2">
-                <button type="button" onClick={() => setWizardStep(6)} className="btn-ghost">
+                <button type="button" onClick={() => setWizardStep(7)} className="btn-ghost">
                   Atrás
                 </button>
                 <button

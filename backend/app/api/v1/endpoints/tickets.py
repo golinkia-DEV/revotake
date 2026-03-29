@@ -57,7 +57,20 @@ async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = 
     tickets = result.scalars().all()
     board = {}
     for status in TicketStatus:
-        board[status.value] = [{"id": t.id, "title": t.title, "type": t.type, "status": t.status, "priority": t.priority, "client_id": t.client_id, "due_date": t.due_date} for t in tickets if t.status == status]
+        board[status.value] = [
+            {
+                "id": t.id,
+                "title": t.title,
+                "type": t.type,
+                "status": t.status,
+                "priority": t.priority,
+                "client_id": t.client_id,
+                "due_date": t.due_date,
+                "extra_data": t.extra_data or {},
+            }
+            for t in tickets
+            if t.status == status
+        ]
     return board
 
 

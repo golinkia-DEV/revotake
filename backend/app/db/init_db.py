@@ -332,9 +332,54 @@ STORE_TYPE_SEEDS = [
     },
 ]
 
+async def _migrate_scheduling_operations_extensions():
+    """Servicio → producto; cita → ticket y precio cobrado (panel atención / operaciones)."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    stmts = [
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS product_id VARCHAR;",
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS allow_price_override BOOLEAN DEFAULT true;",
+        "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS ticket_id VARCHAR;",
+        "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS charged_price_cents INTEGER;",
+        "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS session_closed_at TIMESTAMP;",
+    ]
+    for sql in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql))
+        except Exception as e:
+            print(f"Aviso migración scheduling ops ({sql[:50]}…):", e)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    ALTER TABLE scheduling_services
+                    ADD CONSTRAINT scheduling_services_product_id_fkey
+                    FOREIGN KEY (product_id) REFERENCES products(id)
+                    """
+                )
+            )
+    except Exception as e:
+        print("Aviso FK scheduling_services.product_id (puede existir):", e)
+    for idx_sql in (
+        "CREATE INDEX IF NOT EXISTS ix_appt_store_status_end ON appointments (store_id, status, end_time);",
+        "CREATE INDEX IF NOT EXISTS ix_appt_store_start_status ON appointments (store_id, start_time, status);",
+    ):
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(idx_sql))
+        except Exception as e:
+            print(f"Aviso índice panel citas ({idx_sql[:40]}…):", e)
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        await _migrate_scheduling_operations_extensions()
+    except Exception as e:
+        print("Aviso migración scheduling operations:", e)
     try:
         await _migrate_permissions_column_and_userrole_client()
     except Exception as e:

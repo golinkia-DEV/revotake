@@ -114,6 +114,9 @@ class Service(Base):
     buffer_after_minutes: Mapped[int] = mapped_column(Integer, default=0)
     price_cents: Mapped[int] = mapped_column(Integer, default=0)
     currency: Mapped[str] = mapped_column(String(8), default="CLP")
+    # Producto de inventario vinculado (precio lista estimado); el cobro en sala puede diferir.
+    product_id: Mapped[str | None] = mapped_column(ForeignKey("products.id"), nullable=True, index=True)
+    allow_price_override: Mapped[bool] = mapped_column(Boolean, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
@@ -177,6 +180,11 @@ class Appointment(Base):
     manage_token: Mapped[str] = mapped_column(String(64), default=lambda: str(uuid.uuid4()), unique=True)
     hold_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Ficha operaciones (Kanban) abierta al iniciar la franja de atención
+    ticket_id: Mapped[str | None] = mapped_column(ForeignKey("tickets.id"), nullable=True, index=True)
+    # Monto cobrado al cerrar (puede diferir de price_cents del servicio / producto)
+    charged_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    session_closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 

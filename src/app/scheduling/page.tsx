@@ -40,6 +40,12 @@ export default function SchedulingAdminPage() {
           <p className="max-w-xl text-sm text-slate-500">
             Sucursales, profesionales, servicios, disponibilidad y reservas públicas. Métricas y export CSV desde la API.
           </p>
+          <Link
+            href="/scheduling/panel"
+            className="mt-3 inline-flex text-sm font-semibold text-primary hover:underline"
+          >
+            Abrir panel de atención (trabajadores, ventas, alertas de cierre)
+          </Link>
         </div>
         {publicBookUrl && (
           <a
