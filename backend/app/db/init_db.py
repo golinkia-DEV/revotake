@@ -27,6 +27,25 @@ DEFAULT_SETTINGS = {
 }
 
 
+async def _migrate_permissions_column_and_userrole_client():
+    if "postgresql" in settings.DATABASE_URL:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("ALTER TABLE store_members ADD COLUMN IF NOT EXISTS permissions JSONB;")
+            )
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'client';"))
+        except Exception as e:
+            print("Aviso migración userrole (client):", e)
+    elif "sqlite" in settings.DATABASE_URL:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TABLE store_members ADD COLUMN permissions JSON;"))
+        except Exception as e:
+            print("Aviso migración store_members.permissions (sqlite):", e)
+
+
 async def _migrate_meeting_confirmation_columns():
     if "postgresql" not in settings.DATABASE_URL:
         return
@@ -98,6 +117,10 @@ STORE_TYPE_SEEDS = [
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        await _migrate_permissions_column_and_userrole_client()
+    except Exception as e:
+        print("Aviso migración permisos/userrole:", e)
     try:
         await _migrate_meeting_confirmation_columns()
     except Exception as e:

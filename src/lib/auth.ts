@@ -6,6 +6,8 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  /** Igual que role; útil en JWT / comparación con AgendaPro (rol global). */
+  global_role?: string;
 }
 
 export async function login(email: string, password: string): Promise<User> {

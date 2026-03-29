@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import FrozenSet
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
@@ -6,14 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
+from app.core.permissions import effective_permissions
 from app.models.store import Store, StoreMember, StoreMemberRole
-from app.models.user import User
+from app.models.user import User, UserRole
 
 
 @dataclass
 class StoreContext:
     store: Store
     member: StoreMember
+    permissions: FrozenSet[str]
 
     @property
     def store_id(self) -> str:
@@ -40,10 +43,28 @@ async def require_store(
     store = sr.scalar_one_or_none()
     if not store:
         raise HTTPException(status_code=404, detail="Tienda no encontrada")
-    return StoreContext(store=store, member=member)
+    perms = effective_permissions(member)
+    return StoreContext(store=store, member=member, permissions=perms)
+
+
+def require_store_permission(*any_of: str):
+    """Al menos uno de los permisos debe estar presente (OR)."""
+
+    async def dep(ctx: StoreContext = Depends(require_store)) -> StoreContext:
+        if not any(p in ctx.permissions for p in any_of):
+            raise HTTPException(status_code=403, detail="Permisos insuficientes para esta acción")
+        return ctx
+
+    return dep
 
 
 async def require_store_admin(ctx: StoreContext = Depends(require_store)) -> StoreContext:
     if ctx.member.role != StoreMemberRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Se requiere administrador de la tienda")
+        raise HTTPException(status_code=403, detail="Se requiere gerente de tienda (admin de local)")
     return ctx
+
+
+async def require_global_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Se requiere administrador global")
+    return user

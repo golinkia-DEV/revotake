@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import StoreContext, require_store, require_store_admin
+from app.core.permissions import effective_permissions
 from app.models.store import Store, StoreMember, StoreMemberRole
 from app.models.store_type import StoreType
 from app.models.user import User
@@ -67,6 +68,7 @@ async def my_stores(db: AsyncSession = Depends(get_db), user: User = Depends(get
                 "store_type_id": store.store_type_id,
                 "store_type_name": st.name if st else None,
                 "role": member.role.value,
+                "permissions": sorted(effective_permissions(member)),
                 "settings": store.settings,
             }
         )
@@ -120,6 +122,7 @@ async def get_store(
         "store_type_id": store.store_type_id,
         "store_type": {"name": st.name, "slug": st.slug, "description": st.description} if st else None,
         "role": member.role.value,
+        "permissions": sorted(effective_permissions(member)),
         "settings": store.settings,
     }
 

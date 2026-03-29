@@ -5,9 +5,12 @@ import uuid, enum
 from datetime import datetime
 
 class UserRole(str, enum.Enum):
+    """Rol global: admin = único que gestiona usuarios/roles a nivel sistema."""
+
     ADMIN = "admin"
     SELLER = "seller"
     OPERATOR = "operator"
+    CLIENT = "client"  # Portal cliente: solo sus citas / datos propios (futuro)
 
 class User(Base):
     __tablename__ = "users"

@@ -9,9 +9,11 @@ from app.core.database import Base
 
 
 class StoreMemberRole(str, enum.Enum):
-    ADMIN = "admin"
-    SELLER = "seller"
-    OPERATOR = "operator"
+    """Rol dentro de una tienda (comparable a AgendaPro)."""
+
+    ADMIN = "admin"  # Gerente de tienda
+    SELLER = "seller"  # Recepcionista
+    OPERATOR = "operator"  # Trabajador / profesional de piso
 
 
 class Store(Base):
@@ -34,6 +36,7 @@ class StoreMember(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
     store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
     role: Mapped[StoreMemberRole] = mapped_column(SAEnum(StoreMemberRole), default=StoreMemberRole.SELLER)
+    permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     user: Mapped["User"] = relationship("User", back_populates="store_memberships")
     store: Mapped["Store"] = relationship("Store", back_populates="members")

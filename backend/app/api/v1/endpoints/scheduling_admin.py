@@ -11,7 +11,18 @@ from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import StoreContext, require_store, require_store_admin
+from app.core.deps import StoreContext, require_store_admin, require_store_permission
+from app.core.permissions import (
+    CREAR_CITA,
+    EDITAR_CITA,
+    EXPORTAR_REGISTROS,
+    VER_AGENDA_TIENDA,
+    VER_CATALOGO_AGENDA,
+    VER_FICHAS,
+    CREAR_FICHAS,
+    VER_REPORTES,
+    VER_REPORTES_PAGOS,
+)
 from app.models.user import User
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.client import Client
@@ -57,7 +68,10 @@ class BranchCreate(BaseModel):
 
 
 @router.get("/branches")
-async def list_branches(db: AsyncSession = Depends(get_db), ctx: StoreContext = Depends(require_store)):
+async def list_branches(
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
+):
     r = await db.execute(select(Branch).where(Branch.store_id == ctx.store_id).order_by(Branch.name))
     rows = r.scalars().all()
     return {"items": [{"id": b.id, "name": b.name, "slug": b.slug, "timezone": b.timezone, "is_active": b.is_active} for b in rows]}
@@ -86,7 +100,10 @@ class ProfessionalCreate(BaseModel):
 
 
 @router.get("/professionals")
-async def list_professionals(db: AsyncSession = Depends(get_db), ctx: StoreContext = Depends(require_store)):
+async def list_professionals(
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
+):
     r = await db.execute(
         select(Professional).where(Professional.store_id == ctx.store_id).order_by(Professional.name)
     )
@@ -191,7 +208,10 @@ class ServiceCreate(BaseModel):
 
 
 @router.get("/services")
-async def list_services(db: AsyncSession = Depends(get_db), ctx: StoreContext = Depends(require_store)):
+async def list_services(
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
+):
     r = await db.execute(
         select(Service).where(Service.store_id == ctx.store_id).order_by(Service.name)
     )
@@ -310,7 +330,7 @@ async def create_availability_rule(
 @router.get("/availability-rules")
 async def list_availability_rules(
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
     professional_id: Optional[str] = None,
     branch_id: Optional[str] = None,
 ):
@@ -374,7 +394,10 @@ async def create_holiday(
 
 
 @router.get("/holidays")
-async def list_holidays(db: AsyncSession = Depends(get_db), ctx: StoreContext = Depends(require_store)):
+async def list_holidays(
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
+):
     r = await db.execute(select(Holiday).where(Holiday.store_id == ctx.store_id).order_by(Holiday.holiday_date))
     rows = r.scalars().all()
     return {
@@ -400,7 +423,7 @@ async def admin_slots(
     service_id: str,
     on_date: date,
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
 ):
     slots = await compute_slots(
         db,
@@ -429,7 +452,7 @@ class AdminAppointmentCreate(BaseModel):
 @router.get("/appointments")
 async def list_appointments(
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_AGENDA_TIENDA)),
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
     professional_id: Optional[str] = None,
@@ -474,7 +497,7 @@ async def list_appointments(
 async def create_admin_appointment(
     data: AdminAppointmentCreate,
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(CREAR_CITA)),
     user: User = Depends(get_current_user),
 ):
     if data.client_id:
@@ -517,7 +540,7 @@ async def patch_appointment(
     appointment_id: str,
     data: AppointmentPatch,
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(EDITAR_CITA)),
     user: User = Depends(get_current_user),
 ):
     a = await db.get(Appointment, appointment_id)
@@ -545,7 +568,7 @@ async def patch_appointment(
 @router.get("/dashboard")
 async def scheduling_dashboard(
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES)),
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
 ):
@@ -605,7 +628,7 @@ async def scheduling_dashboard(
 @router.get("/appointments/export.csv")
 async def export_appointments_csv(
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(EXPORTAR_REGISTROS)),
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
 ):
@@ -655,7 +678,7 @@ async def export_appointments_csv(
 async def appointment_audit(
     appointment_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_AGENDA_TIENDA)),
 ):
     a = await db.get(Appointment, appointment_id)
     if not a or a.store_id != ctx.store_id:
@@ -687,7 +710,7 @@ async def appointment_audit(
 async def create_payment_intent(
     appointment_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(EDITAR_CITA, VER_REPORTES_PAGOS)),
 ):
     a = await db.get(Appointment, appointment_id)
     if not a or a.store_id != ctx.store_id:
@@ -738,7 +761,7 @@ class ClientDocumentCreate(BaseModel):
 async def list_client_documents(
     client_id: str,
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_FICHAS)),
 ):
     cl = await db.get(Client, client_id)
     if not cl or cl.store_id != ctx.store_id:
@@ -767,7 +790,7 @@ async def list_client_documents(
 async def create_client_document(
     data: ClientDocumentCreate,
     db: AsyncSession = Depends(get_db),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(CREAR_FICHAS)),
 ):
     cl = await db.get(Client, data.client_id)
     if not cl or cl.store_id != ctx.store_id:
