@@ -1,5 +1,5 @@
 """Webhooks de pasarelas (stubs listos para Stripe / Mercado Pago)."""
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
