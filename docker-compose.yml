@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: revotake_postgres
+    environment:
+      POSTGRES_DB: revotake
+      POSTGRES_USER: revotake
+      POSTGRES_PASSWORD: revotake123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - revotake_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: revotake_redis
+    restart: unless-stopped
+    networks:
+      - revotake_net
+
+  backend:
+    build: ./backend
+    container_name: revotake_backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://revotake:revotake123@postgres:5432/revotake
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8001:8000"
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - revotake_net
+
+volumes:
+  postgres_data:
+
+networks:
+  revotake_net:
+    driver: bridge

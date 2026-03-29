@@ -1,0 +1,21 @@
+from sqlalchemy import String, DateTime, Text, JSON, ForeignKey, Boolean
+from sqlalchemy.orm import Mapped, mapped_column
+from app.core.database import Base
+import uuid
+from datetime import datetime
+
+class Meeting(Base):
+    __tablename__ = "meetings"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title: Mapped[str] = mapped_column(String)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True)
+    ticket_id: Mapped[str | None] = mapped_column(ForeignKey("tickets.id"), nullable=True)
+    organizer_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    start_time: Mapped[datetime] = mapped_column(DateTime)
+    end_time: Mapped[datetime] = mapped_column(DateTime)
+    meeting_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    ics_token: Mapped[str] = mapped_column(String, default=lambda: str(uuid.uuid4()))
+    attendees: Mapped[dict] = mapped_column(JSON, default=dict)
+    ics_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

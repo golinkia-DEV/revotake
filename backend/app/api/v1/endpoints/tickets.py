@@ -1,0 +1,81 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+from app.core.database import get_db
+from app.models.ticket import Ticket, TicketType, TicketStatus
+from app.models.user import User
+from app.api.v1.endpoints.auth import get_current_user
+
+router = APIRouter()
+
+class TicketCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    type: TicketType = TicketType.LEAD
+    status: TicketStatus = TicketStatus.NEW
+    priority: str = "medium"
+    client_id: Optional[str] = None
+    assigned_to: Optional[str] = None
+    metadata: dict = {}
+    due_date: Optional[datetime] = None
+
+class TicketUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[TicketStatus] = None
+    priority: Optional[str] = None
+    assigned_to: Optional[str] = None
+    metadata: Optional[dict] = None
+    due_date: Optional[datetime] = None
+
+@router.get("/")
+async def list_tickets(status: Optional[TicketStatus] = None, type: Optional[TicketType] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    query = select(Ticket)
+    if status:
+        query = query.where(Ticket.status == status)
+    if type:
+        query = query.where(Ticket.type == type)
+    query = query.order_by(Ticket.created_at.desc())
+    result = await db.execute(query)
+    tickets = result.scalars().all()
+    return {"items": [{"id": t.id, "title": t.title, "type": t.type, "status": t.status, "priority": t.priority, "client_id": t.client_id, "due_date": t.due_date, "created_at": t.created_at} for t in tickets]}
+
+@router.get("/kanban")
+async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(Ticket).order_by(Ticket.created_at.desc()))
+    tickets = result.scalars().all()
+    board = {}
+    for status in TicketStatus:
+        board[status.value] = [{"id": t.id, "title": t.title, "type": t.type, "status": t.status, "priority": t.priority, "client_id": t.client_id, "due_date": t.due_date} for t in tickets if t.status == status]
+    return board
+
+@router.post("/")
+async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    ticket = Ticket(**data.model_dump())
+    db.add(ticket)
+    await db.commit()
+    return {"id": ticket.id, "title": ticket.title, "status": ticket.status}
+
+@router.put("/{ticket_id}")
+async def update_ticket(ticket_id: str, data: TicketUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+    for k, v in data.model_dump(exclude_none=True).items():
+        setattr(ticket, k, v)
+    await db.commit()
+    return {"id": ticket.id, "status": ticket.status}
+
+@router.delete("/{ticket_id}")
+async def delete_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(Ticket).where(Ticket.id == ticket_id))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(404)
+    await db.delete(ticket)
+    await db.commit()
+    return {"message": "Deleted"}
