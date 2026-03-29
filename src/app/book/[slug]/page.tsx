@@ -5,10 +5,11 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { Calendar, ChevronRight, Loader2, MapPin, Clock, Coffee, Wifi, Car } from "lucide-react";
+import { Calendar, ChevronRight, Loader2, MapPin, Clock, Car } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import Link from "next/link";
+import { listSelectedAmenityLabels, mergeStoreProfileFromApi } from "@/lib/storeProfile";
 
 const publicApi = axios.create({ baseURL: API_URL });
 
@@ -29,6 +30,7 @@ function PublicPlaceInfo({
   am: Record<string, unknown>;
 }) {
   const park = String(am.estacionamiento || "");
+  const amenityLabels = listSelectedAmenityLabels(mergeStoreProfileFromApi({ amenities: am }).amenities);
   return (
     <div className="space-y-3 text-slate-700 dark:text-slate-200">
       {(loc.direccion_atencion || loc.comuna) && (
@@ -82,20 +84,18 @@ function PublicPlaceInfo({
           </p>
         </div>
       )}
-      <div className="flex flex-wrap gap-2 text-xs">
-        {Boolean(am.cafeteria) && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-            <Coffee className="h-3 w-3" /> Café / bebidas
-          </span>
-        )}
-        {Boolean(am.wifi) && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
-            <Wifi className="h-3 w-3" /> Wi‑Fi
-          </span>
-        )}
-        {Boolean(am.sala_espera) && <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">Sala de espera</span>}
-        {Boolean(am.acceso_movilidad) && <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">Acceso movilidad</span>}
-      </div>
+      {amenityLabels.length > 0 && (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {amenityLabels.map((label) => (
+            <span
+              key={label}
+              className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100"
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
       {typeof am.otras_comodidades === "string" && am.otras_comodidades.trim() && (
         <p className="text-xs text-slate-600 dark:text-slate-300">{am.otras_comodidades}</p>
       )}
@@ -221,11 +221,12 @@ export default function PublicBookPage() {
             const loc = pub.location_public || {};
             const ho = pub.horarios || {};
             const am = pub.amenities || {};
+            const mergedAmenities = mergeStoreProfileFromApi({ amenities: am }).amenities;
             const hasInfo =
               Boolean(loc.direccion_atencion || loc.comuna || loc.referencias_acceso || loc.google_maps_url) ||
               Boolean(ho.lun_vie || ho.sabado || ho.domingo_feriados || ho.notas) ||
               Boolean(am.estacionamiento && am.estacionamiento !== "no") ||
-              Boolean(am.cafeteria || am.wifi || am.sala_espera || am.acceso_movilidad) ||
+              listSelectedAmenityLabels(mergedAmenities).length > 0 ||
               (typeof am.otras_comodidades === "string" && am.otras_comodidades.trim().length > 0);
             if (!hasInfo) return null;
             return (

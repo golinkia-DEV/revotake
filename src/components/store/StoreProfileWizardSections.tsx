@@ -1,6 +1,7 @@
 "use client";
 
-import { FileText, MapPin, Clock, Coffee } from "lucide-react";
+import { useState } from "react";
+import { FileText, MapPin, Clock, Coffee, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import clsx from "clsx";
 import type {
   FiscalChile,
@@ -9,6 +10,7 @@ import type {
   Amenities,
   EstacionamientoTipo,
 } from "@/lib/storeProfile";
+import { AMENITIES_EXTENDED_DEFS, AMENITIES_QUICK_KEYS } from "@/lib/storeProfile";
 
 export function FiscalChileStep({ value, onChange }: { value: FiscalChile; onChange: (v: FiscalChile) => void }) {
   const f = (k: keyof FiscalChile, s: string) => onChange({ ...value, [k]: s });
@@ -154,7 +156,15 @@ const EST_OPTS: { id: EstacionamientoTipo; label: string }[] = [
   { id: "limitado", label: "Plazas limitadas / rotación" },
 ];
 
+const QUICK_LABELS: Record<(typeof AMENITIES_QUICK_KEYS)[number], string> = {
+  cafeteria: "Café / bebidas de cortesía",
+  wifi: "Wi‑Fi para visitas",
+  sala_espera: "Sala de espera",
+  acceso_movilidad: "Acceso movilidad reducida",
+};
+
 export function AmenitiesStep({ value, onChange }: { value: Amenities; onChange: (v: Amenities) => void }) {
+  const [showExtended, setShowExtended] = useState(false);
   const a = (k: keyof Amenities, v: string | boolean) => onChange({ ...value, [k]: v });
   return (
     <div className="space-y-4">
@@ -164,7 +174,8 @@ export function AmenitiesStep({ value, onChange }: { value: Amenities; onChange:
           Comodidades para quien reserva
         </p>
         <p className="mt-2 text-sm text-slate-600">
-          Esto ayuda a que tus clientes sepan qué esperar antes de visitarte (similar a alojamientos en Airbnb).
+          Lo más buscado en reservas online y fichas de Google Negocio, Fresha y marketplaces de servicios locales:{" "}
+          <strong>20 opciones</strong> (4 rápidas + 16 ampliadas) para que tu ficha pública sea clara como un alojamiento en Airbnb.
         </p>
       </div>
       <div>
@@ -194,19 +205,56 @@ export function AmenitiesStep({ value, onChange }: { value: Amenities; onChange:
           />
         </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {[
-          { k: "cafeteria" as const, label: "Café / bebidas de cortesía" },
-          { k: "wifi" as const, label: "Wi‑Fi para visitas" },
-          { k: "sala_espera" as const, label: "Sala de espera" },
-          { k: "acceso_movilidad" as const, label: "Acceso movilidad reducida" },
-        ].map(({ k, label }) => (
-          <label key={k} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-            <input type="checkbox" checked={value[k]} onChange={(e) => a(k, e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
-            <span className="text-sm text-slate-800">{label}</span>
-          </label>
-        ))}
+      <div>
+        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Comodidades frecuentes</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {AMENITIES_QUICK_KEYS.map((k) => (
+            <label key={k} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+              <input type="checkbox" checked={value[k]} onChange={(e) => a(k, e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+              <span className="text-sm text-slate-800">{QUICK_LABELS[k]}</span>
+            </label>
+          ))}
+        </div>
       </div>
+
+      <div className="rounded-xl border border-primary/15 bg-primary/[0.04] p-3">
+        <button
+          type="button"
+          onClick={() => setShowExtended((v) => !v)}
+          className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left text-sm font-semibold text-on-surface transition hover:bg-primary/5"
+        >
+          <span className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 shrink-0 text-primary" />
+            Más comodidades sugeridas (16)
+          </span>
+          {showExtended ? <ChevronUp className="h-4 w-4 shrink-0 text-slate-500" /> : <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />}
+        </button>
+        <p className="px-2 pb-1 text-xs text-slate-600">
+          Basadas en lo que suelen destacar negocios de servicios, clínicas, salones y talleres en Chile y plataformas de agendamiento.
+        </p>
+        {showExtended && (
+          <div className="mt-2 grid gap-2 border-t border-primary/10 pt-3 sm:grid-cols-2">
+            {AMENITIES_EXTENDED_DEFS.map(({ key, label, hint }) => (
+              <label
+                key={key}
+                className="flex cursor-pointer gap-3 rounded-lg border border-slate-200/90 bg-white p-3 shadow-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(value[key])}
+                  onChange={(e) => a(key, e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-slate-800">{label}</span>
+                  {hint ? <span className="mt-0.5 block text-xs text-slate-500">{hint}</span> : null}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-600">Otras comodidades (opcional)</label>
         <textarea

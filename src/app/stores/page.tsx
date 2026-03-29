@@ -14,6 +14,7 @@ import clsx from "clsx";
 import { WORKFLOW_PRESETS, WIZARD_HELP_TEXT, type WorkflowPresetId, presetById } from "@/lib/operationsWorkflow";
 import {
   emptyStoreProfile,
+  listSelectedAmenityLabels,
   mergeStoreProfileFromApi,
   type StoreProfile,
 } from "@/lib/storeProfile";
@@ -454,14 +455,7 @@ export default function StoresPage() {
                 </li>
                 <li>
                   <strong>Comodidades:</strong>{" "}
-                  {[
-                    storeProfile.amenities.cafeteria && "Café",
-                    storeProfile.amenities.wifi && "Wi‑Fi",
-                    storeProfile.amenities.sala_espera && "Sala de espera",
-                    storeProfile.amenities.acceso_movilidad && "Acceso movilidad",
-                  ]
-                    .filter(Boolean)
-                    .join(", ") || "—"}
+                  {listSelectedAmenityLabels(storeProfile.amenities).join(", ") || "—"}
                 </li>
                 <li>
                   <strong>Tablero operaciones:</strong> {presetById(workflowPreset).title}
