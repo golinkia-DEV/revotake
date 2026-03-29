@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import api from "@/lib/api";
 import { getStoreId, setStoreId } from "@/lib/store";
 import clsx from "clsx";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 interface StoreRow {
   id: string;
@@ -37,33 +38,33 @@ export default function StoreSwitcher() {
 
   if (items.length === 0) {
     return (
-      <div className="px-3 py-2 text-xs text-amber-400/90 bg-amber-500/10 rounded-xl border border-amber-500/20">
+      <div className="rounded-xl border border-amber-200/80 bg-amber-50 px-3 py-2 text-xs text-amber-800">
         Crea una tienda para usar el panel.
       </div>
     );
   }
 
   return (
-    <div className="relative px-3 mb-2">
+    <div className="relative px-1">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-left bg-dark-700/50 border border-white/5 text-gray-200 hover:bg-white/5 transition-colors"
+        className="flex w-full items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2.5 text-left text-sm text-slate-800 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700/80"
       >
-        <Building2 className="w-4 h-4 text-brand-400 flex-shrink-0" />
-        <span className="truncate flex-1">{currentName}</span>
-        <ChevronDown className={clsx("w-4 h-4 flex-shrink-0 transition-transform", open && "rotate-180")} />
+        <MaterialIcon name="storefront" className="flex-shrink-0 text-primary" />
+        <span className="flex-1 truncate">{currentName}</span>
+        <ChevronDown className={clsx("h-4 w-4 flex-shrink-0 text-slate-400 transition-transform", open && "rotate-180")} />
       </button>
       {open && (
-        <ul className="absolute left-3 right-3 top-full mt-1 py-1 rounded-xl bg-dark-700 border border-white/10 shadow-xl z-50 max-h-56 overflow-auto">
+        <ul className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-700 dark:bg-slate-800">
           {items.map((s) => (
             <li key={s.id}>
               <button
                 type="button"
                 onClick={() => select(s.id)}
                 className={clsx(
-                  "w-full text-left px-3 py-2 text-sm hover:bg-white/5",
-                  s.id === active ? "text-brand-400" : "text-gray-300"
+                  "w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700/80",
+                  s.id === active ? "font-semibold text-primary" : "text-slate-700 dark:text-slate-200"
                 )}
               >
                 {s.name}

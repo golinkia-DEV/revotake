@@ -6,4 +6,4 @@ from app.models.ticket import Ticket, TicketType, TicketStatus
 from app.models.product import Product
 from app.models.purchase import Purchase
 from app.models.form_link import FormLink
-from app.models.meeting import Meeting
+from app.models.meeting import Meeting, MeetingConfirmationStatus

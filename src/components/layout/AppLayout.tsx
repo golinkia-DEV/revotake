@@ -4,6 +4,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
 import { getStoreId } from "@/lib/store";
 import Sidebar from "./Sidebar";
+import TopBar from "./TopBar";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -17,11 +18,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (!getStoreId()) router.replace("/stores");
   }, [pathname, router]);
   return (
-    <div className="flex min-h-screen">
+    <div className="min-h-screen bg-surface">
       <Sidebar />
-      <main className="flex-1 overflow-auto">
-        <div className="p-6">{children}</div>
-      </main>
+      <div className="ml-64 flex min-h-screen flex-col">
+        <TopBar />
+        <main className="flex-1 overflow-auto p-8">{children}</main>
+      </div>
     </div>
   );
 }

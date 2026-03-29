@@ -1,50 +1,87 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap");
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  .material-symbols-outlined {
+    font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+    vertical-align: middle;
+  }
   body {
-    @apply bg-dark-900 text-white font-sans antialiased;
+    @apply bg-surface text-on-surface font-sans antialiased;
   }
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-dark-800;
+    @apply bg-transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-dark-500 rounded-full;
+    @apply bg-surface-variant rounded-full;
   }
 }
 
 @layer components {
+  .bento-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 1.5rem;
+  }
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-surface-variant rounded-full;
+  }
   .glass-card {
-    @apply bg-dark-700/60 backdrop-blur-xl border border-white/5 rounded-2xl;
+    @apply bg-surface-container-lowest border border-slate-100/80 shadow-sm rounded-2xl;
   }
   .glass-card-hover {
-    @apply glass-card hover:border-brand-500/30 hover:bg-dark-600/60 transition-all duration-300;
+    @apply glass-card hover:border-primary/15 hover:shadow-md transition-all duration-200;
   }
   .btn-primary {
-    @apply bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 shadow-lg shadow-brand-600/25 hover:shadow-brand-500/40 hover:scale-[1.02] active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-primary to-primary-container px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:opacity-95 active:scale-[0.98];
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-surface-container-high px-5 py-2.5 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-container-highest;
   }
   .btn-ghost {
-    @apply text-gray-400 hover:text-white hover:bg-white/5 px-4 py-2 rounded-xl transition-all duration-200;
+    @apply rounded-xl px-4 py-2 text-sm text-slate-600 transition-colors hover:bg-surface-container-low hover:text-on-surface;
   }
   .input-field {
-    @apply bg-dark-600 border border-white/10 text-white placeholder-gray-500 rounded-xl px-4 py-2.5 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/30 transition-all duration-200 w-full;
+    @apply w-full rounded-xl border border-slate-200/90 bg-surface-container-low px-4 py-2.5 text-sm text-on-surface placeholder:text-slate-400 transition-colors focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15;
   }
   .badge {
-    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
-  .badge-new { @apply badge bg-blue-500/20 text-blue-300 border border-blue-500/30; }
-  .badge-qualified { @apply badge bg-purple-500/20 text-purple-300 border border-purple-500/30; }
-  .badge-meeting { @apply badge bg-yellow-500/20 text-yellow-300 border border-yellow-500/30; }
-  .badge-sold { @apply badge bg-green-500/20 text-green-300 border border-green-500/30; }
-  .badge-closed { @apply badge bg-gray-500/20 text-gray-300 border border-gray-500/30; }
-  .badge-critical { @apply badge bg-red-500/20 text-red-300 border border-red-500/30; }
-  .badge-low { @apply badge bg-orange-500/20 text-orange-300 border border-orange-500/30; }
-  .badge-ok { @apply badge bg-green-500/20 text-green-300 border border-green-500/30; }
+  .badge-new {
+    @apply badge border border-blue-200/80 bg-blue-50 text-blue-700;
+  }
+  .badge-qualified {
+    @apply badge border border-purple-200/80 bg-purple-50 text-purple-800;
+  }
+  .badge-meeting {
+    @apply badge border border-amber-200/80 bg-amber-50 text-amber-800;
+  }
+  .badge-sold {
+    @apply badge border border-emerald-200/80 bg-emerald-50 text-emerald-800;
+  }
+  .badge-closed {
+    @apply badge border border-slate-200 bg-slate-100 text-slate-600;
+  }
+  .badge-critical {
+    @apply badge border border-red-200 bg-red-50 text-red-800;
+  }
+  .badge-low {
+    @apply badge border border-orange-200 bg-orange-50 text-orange-800;
+  }
+  .badge-ok {
+    @apply badge border border-emerald-200 bg-emerald-50 text-emerald-800;
+  }
 }

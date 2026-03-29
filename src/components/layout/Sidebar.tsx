@@ -2,20 +2,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { LayoutDashboard, Users, Kanban, Package, Calendar, Bot, Zap, LogOut, ChevronRight, Building2 } from "lucide-react";
+import { LogOut, ChevronRight } from "lucide-react";
 import StoreSwitcher from "./StoreSwitcher";
 import { logout } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
-const nav = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/stores", icon: Building2, label: "Tiendas" },
-  { href: "/kanban", icon: Kanban, label: "Tablero Kanban" },
-  { href: "/clients", icon: Users, label: "Clientes" },
-  { href: "/calendar", icon: Calendar, label: "Agenda" },
-  { href: "/products", icon: Package, label: "Productos" },
-  { href: "/ai", icon: Bot, label: "Asistente IA" },
+const nav: { href: string; label: string; icon: string; filled?: boolean }[] = [
+  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
+  { href: "/stores", label: "Tiendas", icon: "storefront" },
+  { href: "/kanban", label: "Operaciones", icon: "settings_suggest", filled: true },
+  { href: "/clients", label: "Clientes", icon: "group" },
+  { href: "/calendar", label: "Agenda", icon: "calendar_today" },
+  { href: "/products", label: "Inventario", icon: "inventory_2" },
+  { href: "/ai", label: "Asistente IA", icon: "psychology", filled: true },
 ];
 
 export default function Sidebar() {
@@ -28,39 +29,49 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 min-h-screen bg-dark-800/80 backdrop-blur-xl border-r border-white/5 flex flex-col">
-      <div className="p-6 border-b border-white/5">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-600 to-brand-400 flex items-center justify-center shadow-lg shadow-brand-600/30">
-            <Zap className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="font-bold text-white text-lg leading-none">RevoTake</h1>
-            <p className="text-xs text-gray-500 mt-0.5">Business Platform</p>
-          </div>
+    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-slate-200 bg-slate-50 p-4 font-medium antialiased dark:border-slate-800 dark:bg-slate-900">
+      <div className="mb-8 flex items-center gap-3 px-2">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white shadow-lg shadow-primary/20">
+          <MaterialIcon name="deployed_code" className="text-xl" filled />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">RevoTake</h1>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Enterprise Suite</p>
         </div>
       </div>
-      <div className="px-4 pt-2">
+      <div className="px-1 pb-2">
         <StoreSwitcher />
       </div>
-      <nav className="flex-1 p-4 space-y-1">
-        {nav.map(({ href, icon: Icon, label }) => {
+      <nav className="flex-1 space-y-1">
+        {nav.map(({ href, icon, label, filled }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link key={href} href={href}>
-              <motion.div whileHover={{ x: 2 }} className={clsx("flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 group", active ? "bg-brand-600/20 text-brand-400 border border-brand-500/20" : "text-gray-400 hover:text-white hover:bg-white/5")}>
-                <Icon className={clsx("w-5 h-5 transition-colors", active ? "text-brand-400" : "text-gray-500 group-hover:text-white")} />
+              <motion.div
+                whileHover={{ x: 2 }}
+                className={clsx(
+                  "flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors",
+                  active
+                    ? "bg-blue-50 font-semibold text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                )}
+              >
+                <MaterialIcon name={icon} className="text-xl" filled={active || filled} />
                 {label}
-                {active && <ChevronRight className="w-3 h-3 ml-auto text-brand-500" />}
+                {active && <ChevronRight className="ml-auto h-3 w-3 text-primary" />}
               </motion.div>
             </Link>
           );
         })}
       </nav>
-      <div className="p-4 border-t border-white/5">
-        <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200 w-full">
-          <LogOut className="w-5 h-5" />
-          Cerrar sesion
+      <div className="mt-auto space-y-1 border-t border-slate-100 pt-4 dark:border-slate-800">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-slate-800"
+        >
+          <LogOut className="h-5 w-5" />
+          Cerrar sesión
         </button>
       </div>
     </aside>

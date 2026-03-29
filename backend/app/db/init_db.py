@@ -5,13 +5,42 @@ from app.models.store import StoreMemberRole
 from app.core.security import get_password_hash
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select
+from sqlalchemy import select, text
+
+from app.core.config import settings
 
 DEFAULT_SETTINGS = {
     "ai": {"business_context": "", "tone": "professional"},
     "stock": {"replenishment_buffer_days": 2},
-    "agenda": {"default_duration_minutes": 30},
+    "agenda": {"default_duration_minutes": 30, "reminder_hours_before": 24},
 }
+
+
+async def _migrate_meeting_confirmation_columns():
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS confirmation_token VARCHAR(64);"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS confirmation_status VARCHAR(32) DEFAULT 'scheduled';"
+            )
+        )
+        await conn.execute(
+            text(
+                "ALTER TABLE meetings ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP;"
+            )
+        )
+        await conn.execute(
+            text(
+                """UPDATE meetings SET confirmation_token = md5(random()::text || id::text)
+                   WHERE confirmation_token IS NULL OR trim(confirmation_token) = '';"""
+            )
+        )
 
 STORE_TYPE_SEEDS = [
     {
@@ -33,7 +62,11 @@ STORE_TYPE_SEEDS = [
         "slug": "beauty",
         "description": "Agenda de citas, fichas de clientes y consumibles.",
         "icon": "sparkles",
-        "default_settings": {**DEFAULT_SETTINGS, "agenda": {"default_duration_minutes": 45}, "ai": {**DEFAULT_SETTINGS["ai"], "business_context": "Salón, clínica estética o spa: citas, historial y productos de uso frecuente."}},
+        "default_settings": {
+            **DEFAULT_SETTINGS,
+            "agenda": {**DEFAULT_SETTINGS["agenda"], "default_duration_minutes": 45},
+            "ai": {**DEFAULT_SETTINGS["ai"], "business_context": "Salón, clínica estética o spa: citas, historial y productos de uso frecuente."},
+        },
     },
     {
         "name": "Restaurante / delivery",
@@ -54,6 +87,10 @@ STORE_TYPE_SEEDS = [
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        await _migrate_meeting_confirmation_columns()
+    except Exception as e:
+        print("Aviso migración meetings:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:

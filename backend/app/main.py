@@ -1,12 +1,46 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal
 from app.api.v1.router import api_router
+from app.services.meeting_reminders import process_meeting_reminders
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async def worker():
+        while True:
+            try:
+                async with AsyncSessionLocal() as session:
+                    n = await process_meeting_reminders(session)
+                    await session.commit()
+                    if n:
+                        logger.info("Recordatorios de citas enviados: %s", n)
+            except Exception:
+                logger.exception("Worker de recordatorios de citas")
+            await asyncio.sleep(max(60, settings.MEETING_REMINDER_INTERVAL_SEC))
+
+    task = asyncio.create_task(worker())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
 
 app = FastAPI(
     title="RevoTake API",
     version="1.0.0",
-    description="Business Management Platform with AI"
+    description="Business Management Platform with AI",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

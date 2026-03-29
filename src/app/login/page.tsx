@@ -6,7 +6,8 @@ import { login } from "@/lib/auth";
 import api from "@/lib/api";
 import { setStoreId } from "@/lib/store";
 import { toast } from "sonner";
-import { Zap, Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
+import { Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
+import { MaterialIcon } from "@/components/ui/MaterialIcon";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,34 +40,60 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-600/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-600/15 rounded-full blur-3xl" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-surface p-4">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/4 top-1/4 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 h-80 w-80 rounded-full bg-tertiary/10 blur-3xl" />
       </div>
-      <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="w-full max-w-md">
-        <div className="glass-card p-8">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-400 shadow-lg shadow-brand-600/30 mb-4">
-              <Zap className="w-8 h-8 text-white" />
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="relative w-full max-w-md"
+      >
+        <div className="rounded-3xl border border-slate-100 bg-surface-container-lowest p-8 shadow-xl shadow-slate-200/50">
+          <div className="mb-8 text-center">
+            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-white shadow-lg shadow-primary/25">
+              <MaterialIcon name="deployed_code" className="text-4xl" filled />
             </div>
-            <h1 className="text-3xl font-bold text-white mb-1">RevoTake</h1>
-            <p className="text-gray-400 text-sm">Gestión empresarial con IA</p>
+            <h1 className="mb-1 text-3xl font-extrabold tracking-tight text-on-surface">RevoTake</h1>
+            <p className="text-sm text-slate-500">Gestión empresarial con IA</p>
           </div>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="relative">
-              <Mail className="absolute left-3.5 top-3 w-5 h-5 text-gray-400" />
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field pl-11" placeholder="Email" required />
+              <Mail className="absolute left-3.5 top-3 h-5 w-5 text-slate-400" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input-field pl-11"
+                placeholder="Email"
+                required
+              />
             </div>
             <div className="relative">
-              <Lock className="absolute left-3.5 top-3 w-5 h-5 text-gray-400" />
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field pl-11" placeholder="Contrasena" required />
+              <Lock className="absolute left-3.5 top-3 h-5 w-5 text-slate-400" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input-field pl-11"
+                placeholder="Contraseña"
+                required
+              />
             </div>
-            <button type="submit" disabled={loading} className="btn-primary w-full flex items-center justify-center gap-2 mt-2">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><span>Entrar</span><ArrowRight className="w-4 h-4" /></>}
+            <button type="submit" disabled={loading} className="btn-primary mt-2 w-full">
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  <span>Entrar</span>
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
             </button>
           </form>
-          <p className="text-center text-xs text-gray-500 mt-6">Admin: admin@revotake.com / admin123</p>
+          <p className="mt-6 text-center text-xs text-slate-500">Admin: admin@revotake.com / admin123</p>
         </div>
       </motion.div>
     </div>

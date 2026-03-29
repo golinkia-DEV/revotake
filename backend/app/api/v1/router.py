@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, clients, tickets, products, meetings, forms, ai, dashboard, store_types, stores
+from app.api.v1.endpoints import auth, clients, tickets, products, meetings, forms, ai, dashboard, store_types, stores, internal
 
 api_router = APIRouter()
 
@@ -21,6 +21,7 @@ async def api_v1_root():
             "/forms",
             "/ai",
             "/dashboard",
+            "/internal",
         ],
     }
 
@@ -35,3 +36,4 @@ api_router.include_router(meetings.router, prefix="/meetings", tags=["meetings"]
 api_router.include_router(forms.router, prefix="/forms", tags=["forms"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(internal.router, prefix="/internal", tags=["internal"])
