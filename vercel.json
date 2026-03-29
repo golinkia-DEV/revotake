@@ -1,7 +1,4 @@
 {
-  "installCommand": "cd frontend && npm install --legacy-peer-deps",
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/.next",
   "rewrites": [
     {
       "source": "/api/:path*",
