@@ -73,32 +73,206 @@ async def _migrate_meeting_confirmation_columns():
         )
 
 
-async def _migrate_meetings_store_id():
-    """Bases antiguas: la tabla meetings no tenía store_id; el modelo y el worker lo requieren."""
+_PG_FIRST_STORE = "(SELECT id FROM stores ORDER BY created_at ASC NULLS LAST LIMIT 1)"
+
+
+async def _migrate_legacy_store_id_columns_postgresql():
+    """Bases antiguas sin store_id en clients/tickets/products/etc. Debe ejecutarse antes de meetings."""
     if "postgresql" not in settings.DATABASE_URL:
         return
-    async with engine.begin() as conn:
-        await conn.execute(text("ALTER TABLE meetings ADD COLUMN IF NOT EXISTS store_id VARCHAR;"))
-        await conn.execute(
-            text(
-                """
-                UPDATE meetings m
-                SET store_id = c.store_id
-                FROM clients c
-                WHERE m.store_id IS NULL AND m.client_id IS NOT NULL AND c.id = m.client_id
-                """
+
+    async def _add_col(table: str) -> None:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS store_id VARCHAR;")
+                )
+        except Exception as e:
+            print(f"Aviso migración {table}.store_id ADD:", e)
+
+    await _add_col("clients")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"UPDATE clients SET store_id = {_PG_FIRST_STORE} WHERE store_id IS NULL"
+                )
             )
-        )
-        await conn.execute(
-            text(
-                """
-                UPDATE meetings
-                SET store_id = (SELECT id FROM stores ORDER BY created_at ASC NULLS LAST LIMIT 1)
-                WHERE store_id IS NULL
-                """
+    except Exception as e:
+        print("Aviso clients.store_id backfill:", e)
+
+    await _add_col("tickets")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    UPDATE tickets t
+                    SET store_id = c.store_id
+                    FROM clients c
+                    WHERE t.store_id IS NULL AND t.client_id IS NOT NULL AND c.id = t.client_id
+                    """
+                )
             )
-        )
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meetings_store_id ON meetings (store_id);"))
+    except Exception as e:
+        print("Aviso tickets.store_id desde clients:", e)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"UPDATE tickets SET store_id = {_PG_FIRST_STORE} WHERE store_id IS NULL"
+                )
+            )
+    except Exception as e:
+        print("Aviso tickets.store_id fallback:", e)
+
+    await _add_col("products")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"UPDATE products SET store_id = {_PG_FIRST_STORE} WHERE store_id IS NULL"
+                )
+            )
+    except Exception as e:
+        print("Aviso products.store_id backfill:", e)
+
+    await _add_col("purchases")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    UPDATE purchases p
+                    SET store_id = pr.store_id
+                    FROM products pr
+                    WHERE p.store_id IS NULL AND p.product_id = pr.id
+                    """
+                )
+            )
+    except Exception as e:
+        print("Aviso purchases.store_id desde products:", e)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    UPDATE purchases p
+                    SET store_id = c.store_id
+                    FROM clients c
+                    WHERE p.store_id IS NULL AND p.client_id = c.id
+                    """
+                )
+            )
+    except Exception as e:
+        print("Aviso purchases.store_id desde clients:", e)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"UPDATE purchases SET store_id = {_PG_FIRST_STORE} WHERE store_id IS NULL"
+                )
+            )
+    except Exception as e:
+        print("Aviso purchases.store_id fallback:", e)
+
+    await _add_col("form_links")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    UPDATE form_links f
+                    SET store_id = c.store_id
+                    FROM clients c
+                    WHERE f.store_id IS NULL AND f.client_id IS NOT NULL AND c.id = f.client_id
+                    """
+                )
+            )
+    except Exception as e:
+        print("Aviso form_links.store_id desde clients:", e)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"UPDATE form_links SET store_id = {_PG_FIRST_STORE} WHERE store_id IS NULL"
+                )
+            )
+    except Exception as e:
+        print("Aviso form_links.store_id fallback:", e)
+
+    await _add_col("client_documents")
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    UPDATE client_documents d
+                    SET store_id = c.store_id
+                    FROM clients c
+                    WHERE d.store_id IS NULL AND d.client_id = c.id
+                    """
+                )
+            )
+    except Exception as e:
+        print("Aviso client_documents.store_id desde clients:", e)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"UPDATE client_documents SET store_id = {_PG_FIRST_STORE} WHERE store_id IS NULL"
+                )
+            )
+    except Exception as e:
+        print("Aviso client_documents.store_id fallback:", e)
+
+
+async def _migrate_meetings_store_id():
+    """Bases antiguas: la tabla meetings no tenía store_id; el modelo y el worker lo requieren.
+    Cada paso en su propia transacción para que un fallo en UPDATE no revierta el ALTER TABLE."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE meetings ADD COLUMN IF NOT EXISTS store_id VARCHAR;"))
+    except Exception as e:
+        print("Aviso meetings ADD store_id:", e)
+        return
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    UPDATE meetings m
+                    SET store_id = c.store_id
+                    FROM clients c
+                    WHERE m.store_id IS NULL AND m.client_id IS NOT NULL AND c.id = m.client_id
+                    """
+                )
+            )
+    except Exception as e:
+        print("Aviso migración meetings.store_id desde clients:", e)
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    f"""
+                    UPDATE meetings
+                    SET store_id = {_PG_FIRST_STORE}
+                    WHERE store_id IS NULL
+                    """
+                )
+            )
+    except Exception as e:
+        print("Aviso migración meetings.store_id fallback stores:", e)
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meetings_store_id ON meetings (store_id);"))
+    except Exception as e:
+        print("Aviso ix_meetings_store_id:", e)
     try:
         async with engine.begin() as conn:
             await conn.execute(text("ALTER TABLE meetings ALTER COLUMN store_id SET NOT NULL"))
@@ -169,6 +343,10 @@ async def init_db():
         await _migrate_meeting_confirmation_columns()
     except Exception as e:
         print("Aviso migración meetings:", e)
+    try:
+        await _migrate_legacy_store_id_columns_postgresql()
+    except Exception as e:
+        print("Aviso migración legacy store_id:", e)
     try:
         await _migrate_meetings_store_id()
     except Exception as e:
