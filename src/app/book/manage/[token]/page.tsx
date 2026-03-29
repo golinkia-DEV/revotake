@@ -23,8 +23,13 @@ export default function ManageBookingPage() {
 
   const cancel = useMutation({
     mutationFn: () => publicApi.post(`/public/scheduling/manage/${token}/cancel`),
-    onSuccess: () => {
-      toast.success("Cita cancelada");
+    onSuccess: (res) => {
+      const d = res.data;
+      if (d.cancellation_fee_message) {
+        toast.warning(`Cita cancelada. ${d.cancellation_fee_message}`);
+      } else {
+        toast.success("Cita cancelada");
+      }
       qc.invalidateQueries({ queryKey: ["pub-manage", token] });
     },
     onError: () => toast.error("No se pudo cancelar"),

@@ -19,9 +19,14 @@ from app.models.scheduling import (
     Appointment,
     AppointmentStatus,
     PaymentMode,
+    WaitlistEntry,
 )
 from app.services.scheduling_availability import compute_slots
-from app.services.scheduling_booking import create_appointment_booking, schedule_reminder_jobs
+from app.services.scheduling_booking import (
+    create_appointment_booking,
+    schedule_reminder_jobs,
+    cancel_appointment_with_policy,
+)
 from app.services.scheduling_audit import log_appointment_action
 
 router = APIRouter()
@@ -68,9 +73,14 @@ async def public_services(store_slug: str, db: AsyncSession = Depends(get_db)):
                 "id": s.id,
                 "name": s.name,
                 "slug": s.slug,
+                "description": s.description,
                 "duration_minutes": s.duration_minutes,
                 "price_cents": s.price_cents,
                 "currency": s.currency,
+                "deposit_required_cents": s.deposit_required_cents,
+                "cancellation_hours": s.cancellation_hours,
+                "cancellation_fee_cents": s.cancellation_fee_cents,
+                "intake_form_schema": s.intake_form_schema or [],
             }
             for s in items
         ]
@@ -150,6 +160,8 @@ class PublicBookingCreate(BaseModel):
     client_email: Optional[str] = None
     client_phone: Optional[str] = None
     notes: Optional[str] = None
+    # Respuestas al formulario de intake del servicio
+    intake_answers: Optional[dict] = None
 
 
 @router.post("/{store_slug}/bookings")
@@ -159,11 +171,21 @@ async def public_create_booking(
     db: AsyncSession = Depends(get_db),
 ):
     store = await _store_by_slug(db, store_slug)
+
+    # Verificar si el servicio requiere intake antes de reservar
+    svc = await db.get(Service, data.service_id)
+    if svc and svc.intake_form_schema:
+        required_fields = [f["id"] for f in svc.intake_form_schema if f.get("required")]
+        missing = [f for f in required_fields if not (data.intake_answers or {}).get(f)]
+        if missing:
+            raise HTTPException(400, f"Faltan campos requeridos del formulario: {', '.join(missing)}")
+
     client = Client(
         store_id=store.id,
         name=data.client_name.strip(),
         email=(data.client_email or "").strip() or None,
         phone=(data.client_phone or "").strip() or None,
+        preferences={"intake_answers": data.intake_answers} if data.intake_answers else {},
     )
     db.add(client)
     await db.flush()
@@ -183,14 +205,21 @@ async def public_create_booking(
     except ValueError as e:
         raise HTTPException(400, str(e))
 
-    await schedule_reminder_jobs(db, store.id, appt.id, appt.start_time)
+    await schedule_reminder_jobs(
+        db,
+        store.id,
+        appt.id,
+        appt.start_time,
+        end_time=appt.end_time,
+        suggest_rebooking_days=svc.suggest_rebooking_days if svc else 0,
+    )
     await log_appointment_action(
         db,
         appointment_id=appt.id,
         store_id=store.id,
         action="public_booking",
         actor_user_id=None,
-        payload={"client_id": client.id},
+        payload={"client_id": client.id, "has_intake": bool(data.intake_answers)},
     )
 
     return {
@@ -198,6 +227,11 @@ async def public_create_booking(
         "manage_token": appt.manage_token,
         "status": appt.status,
         "checkout": extra.get("checkout"),
+        "deposit_required_cents": svc.deposit_required_cents if svc else 0,
+        "cancellation_policy": {
+            "hours": svc.cancellation_hours if svc else 24,
+            "fee_cents": svc.cancellation_fee_cents if svc else 0,
+        } if svc else None,
     }
 
 
@@ -229,15 +263,109 @@ async def public_manage_cancel(manage_token: str, db: AsyncSession = Depends(get
     appt = r.scalar_one_or_none()
     if not appt:
         raise HTTPException(404, "Cita no encontrada")
-    if appt.status in (AppointmentStatus.CANCELLED.value, AppointmentStatus.COMPLETED.value):
-        raise HTTPException(400, "La cita no se puede cancelar")
-    appt.status = AppointmentStatus.CANCELLED.value
+
+    svc = await db.get(Service, appt.service_id)
+    result = await cancel_appointment_with_policy(db, appt, svc, actor="public")
+    if not result["ok"]:
+        raise HTTPException(400, result["error"])
+
     await log_appointment_action(
         db,
         appointment_id=appt.id,
         store_id=appt.store_id,
         action="cancel_public",
         actor_user_id=None,
-        payload={},
+        payload={"policy_violated": result["policy_violated"], "fee_cents": result["fee_cents"]},
     )
-    return {"ok": True, "status": appt.status}
+
+    # Notificar lista de espera cuando se libera el slot
+    from app.services.appointment_notification_worker import notify_waitlist_for_slot
+    await notify_waitlist_for_slot(
+        db,
+        store_id=appt.store_id,
+        professional_id=appt.professional_id,
+        service_id=appt.service_id,
+        branch_id=appt.branch_id,
+        freed_date=appt.start_time,
+    )
+
+    return {
+        "ok": True,
+        "status": appt.status,
+        "policy_violated": result["policy_violated"],
+        "cancellation_fee_message": result["cancellation_fee_message"],
+    }
+
+
+class WaitlistJoinRequest(BaseModel):
+    professional_id: str
+    service_id: str
+    branch_id: str
+    desired_date: date
+    client_name: str = Field(..., min_length=1, max_length=200)
+    client_email: Optional[str] = None
+    client_phone: Optional[str] = None
+
+
+@router.post("/{store_slug}/waitlist")
+async def public_join_waitlist(
+    store_slug: str,
+    data: WaitlistJoinRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Unirse a la lista de espera para un slot lleno."""
+    store = await _store_by_slug(db, store_slug)
+
+    prof = await db.get(Professional, data.professional_id)
+    svc = await db.get(Service, data.service_id)
+    branch = await db.get(Branch, data.branch_id)
+    if not prof or prof.store_id != store.id:
+        raise HTTPException(400, "Profesional inválido")
+    if not svc or svc.store_id != store.id:
+        raise HTTPException(400, "Servicio inválido")
+    if not branch or branch.store_id != store.id:
+        raise HTTPException(400, "Sucursal inválida")
+
+    entry = WaitlistEntry(
+        store_id=store.id,
+        branch_id=data.branch_id,
+        professional_id=data.professional_id,
+        service_id=data.service_id,
+        client_name=data.client_name.strip(),
+        client_email=(data.client_email or "").strip() or None,
+        client_phone=(data.client_phone or "").strip() or None,
+        desired_date=data.desired_date,
+        status="waiting",
+    )
+    db.add(entry)
+    await db.flush()
+
+    return {
+        "waitlist_id": entry.id,
+        "message": "Te notificaremos por email cuando haya disponibilidad.",
+        "desired_date": data.desired_date.isoformat(),
+    }
+
+
+@router.get("/{store_slug}/waitlist/{desired_date}")
+async def public_waitlist_count(
+    store_slug: str,
+    desired_date: date,
+    professional_id: str,
+    service_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retorna cuántos clientes esperan para ese día/profesional/servicio."""
+    from sqlalchemy import func as sqlfunc
+    store = await _store_by_slug(db, store_slug)
+    r = await db.execute(
+        select(sqlfunc.count(WaitlistEntry.id)).where(
+            WaitlistEntry.store_id == store.id,
+            WaitlistEntry.professional_id == professional_id,
+            WaitlistEntry.service_id == service_id,
+            WaitlistEntry.desired_date == desired_date,
+            WaitlistEntry.status == "waiting",
+        )
+    )
+    count = r.scalar_one_or_none() or 0
+    return {"waiting_count": count, "date": desired_date.isoformat()}

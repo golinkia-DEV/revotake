@@ -46,6 +46,7 @@ from app.models.scheduling import (
     AppointmentAuditLog,
     PaymentAttempt,
     PaymentAttemptStatus,
+    WaitlistEntry,
 )
 from app.services.scheduling_availability import compute_slots
 from app.services.scheduling_booking import create_appointment_booking, schedule_reminder_jobs
@@ -202,6 +203,7 @@ async def patch_professional(
 class ServiceCreate(BaseModel):
     name: str
     slug: Optional[str] = None
+    description: Optional[str] = None
     duration_minutes: int = 30
     buffer_before_minutes: int = 0
     buffer_after_minutes: int = 0
@@ -209,6 +211,11 @@ class ServiceCreate(BaseModel):
     currency: str = "CLP"
     product_id: Optional[str] = None
     allow_price_override: bool = True
+    cancellation_hours: int = 24
+    cancellation_fee_cents: int = 0
+    deposit_required_cents: int = 0
+    suggest_rebooking_days: int = 0
+    intake_form_schema: Optional[list] = None
 
 
 @router.get("/services")
@@ -226,6 +233,7 @@ async def list_services(
                 "id": s.id,
                 "name": s.name,
                 "slug": s.slug,
+                "description": s.description,
                 "duration_minutes": s.duration_minutes,
                 "buffer_before_minutes": s.buffer_before_minutes,
                 "buffer_after_minutes": s.buffer_after_minutes,
@@ -233,6 +241,11 @@ async def list_services(
                 "currency": s.currency,
                 "product_id": s.product_id,
                 "allow_price_override": s.allow_price_override,
+                "cancellation_hours": s.cancellation_hours,
+                "cancellation_fee_cents": s.cancellation_fee_cents,
+                "deposit_required_cents": s.deposit_required_cents,
+                "suggest_rebooking_days": s.suggest_rebooking_days,
+                "intake_form_schema": s.intake_form_schema or [],
                 "is_active": s.is_active,
             }
             for s in rows
@@ -256,6 +269,7 @@ async def create_service(
         store_id=ctx.store_id,
         name=data.name.strip(),
         slug=slug,
+        description=data.description,
         duration_minutes=data.duration_minutes,
         buffer_before_minutes=data.buffer_before_minutes,
         buffer_after_minutes=data.buffer_after_minutes,
@@ -263,6 +277,11 @@ async def create_service(
         currency=data.currency,
         product_id=pid,
         allow_price_override=data.allow_price_override,
+        cancellation_hours=data.cancellation_hours,
+        cancellation_fee_cents=data.cancellation_fee_cents,
+        deposit_required_cents=data.deposit_required_cents,
+        suggest_rebooking_days=data.suggest_rebooking_days,
+        intake_form_schema=data.intake_form_schema,
     )
     db.add(s)
     await db.flush()
@@ -273,6 +292,7 @@ class ServicePatch(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     name: Optional[str] = None
+    description: Optional[str] = None
     duration_minutes: Optional[int] = None
     buffer_before_minutes: Optional[int] = None
     buffer_after_minutes: Optional[int] = None
@@ -280,6 +300,11 @@ class ServicePatch(BaseModel):
     currency: Optional[str] = None
     product_id: Optional[str] = None
     allow_price_override: Optional[bool] = None
+    cancellation_hours: Optional[int] = None
+    cancellation_fee_cents: Optional[int] = None
+    deposit_required_cents: Optional[int] = None
+    suggest_rebooking_days: Optional[int] = None
+    intake_form_schema: Optional[list] = None
     is_active: Optional[bool] = None
 
 
@@ -583,7 +608,15 @@ async def create_admin_appointment(
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
-    await schedule_reminder_jobs(db, ctx.store_id, appt.id, appt.start_time)
+    svc_for_jobs = await db.get(Service, data.service_id)
+    await schedule_reminder_jobs(
+        db,
+        ctx.store_id,
+        appt.id,
+        appt.start_time,
+        end_time=appt.end_time,
+        suggest_rebooking_days=svc_for_jobs.suggest_rebooking_days if svc_for_jobs else 0,
+    )
     await log_appointment_action(
         db,
         appointment_id=appt.id,
@@ -1089,3 +1122,58 @@ async def create_client_document(
     db.add(d)
     await db.flush()
     return {"id": d.id}
+
+
+# --- Waitlist ---
+
+
+@router.get("/waitlist")
+async def list_waitlist(
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_AGENDA_TIENDA)),
+    professional_id: Optional[str] = None,
+    service_id: Optional[str] = None,
+    status: Optional[str] = None,
+):
+    """Lista todas las entradas de lista de espera de la tienda."""
+    q = select(WaitlistEntry).where(WaitlistEntry.store_id == ctx.store_id)
+    if professional_id:
+        q = q.where(WaitlistEntry.professional_id == professional_id)
+    if service_id:
+        q = q.where(WaitlistEntry.service_id == service_id)
+    if status:
+        q = q.where(WaitlistEntry.status == status)
+    q = q.order_by(WaitlistEntry.desired_date, WaitlistEntry.created_at)
+    r = await db.execute(q)
+    rows = r.scalars().all()
+    return {
+        "items": [
+            {
+                "id": e.id,
+                "professional_id": e.professional_id,
+                "service_id": e.service_id,
+                "branch_id": e.branch_id,
+                "client_name": e.client_name,
+                "client_email": e.client_email,
+                "client_phone": e.client_phone,
+                "desired_date": e.desired_date.isoformat(),
+                "status": e.status,
+                "notified_at": e.notified_at.isoformat() if e.notified_at else None,
+                "created_at": e.created_at.isoformat(),
+            }
+            for e in rows
+        ]
+    }
+
+
+@router.delete("/waitlist/{entry_id}")
+async def delete_waitlist_entry(
+    entry_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_admin),
+):
+    entry = await db.get(WaitlistEntry, entry_id)
+    if not entry or entry.store_id != ctx.store_id:
+        raise HTTPException(404, "No encontrado")
+    await db.delete(entry)
+    return {"ok": True}

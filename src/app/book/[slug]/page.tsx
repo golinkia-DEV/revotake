@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { Calendar, ChevronRight, Loader2, MapPin, Clock, Car } from "lucide-react";
+import { Calendar, ChevronRight, Loader2, MapPin, Clock, Car, AlertCircle, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import Link from "next/link";
@@ -20,6 +20,45 @@ const PARK_LABELS: Record<string, string> = {
   si_pago: "Estacionamiento de pago",
   limitado: "Estacionamiento limitado",
 };
+
+type ServiceItem = {
+  id: string;
+  name: string;
+  description?: string;
+  duration_minutes: number;
+  price_cents: number;
+  currency: string;
+  deposit_required_cents: number;
+  cancellation_hours: number;
+  cancellation_fee_cents: number;
+  intake_form_schema: IntakeField[];
+};
+
+type IntakeField = {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select" | "boolean";
+  required?: boolean;
+  options?: string[];
+};
+
+function formatPrice(cents: number, currency: string) {
+  if (cents === 0) return "Gratis";
+  return `${(cents / 100).toLocaleString("es-CL")} ${currency}`;
+}
+
+function CancellationPolicyBadge({ hours, feeCents, currency }: { hours: number; feeCents: number; currency: string }) {
+  if (!hours) return null;
+  return (
+    <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <span>
+        Cancelación gratuita hasta {hours}h antes.
+        {feeCents > 0 && ` Cargo por cancelación tardía: ${formatPrice(feeCents, currency)}.`}
+      </span>
+    </div>
+  );
+}
 
 function PublicPlaceInfo({
   loc,
@@ -123,14 +162,13 @@ export default function PublicBookPage() {
   const [serviceId, setServiceId] = useState<string | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [professionalId, setProfessionalId] = useState<string | null>(null);
-  const [onDate, setOnDate] = useState(() => {
-    const d = new Date();
-    return d.toISOString().slice(0, 10);
-  });
+  const [onDate, setOnDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [slotStart, setSlotStart] = useState<string | null>(null);
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [intakeAnswers, setIntakeAnswers] = useState<Record<string, string>>({});
+  const [waitlistJoined, setWaitlistJoined] = useState(false);
 
   const meta = useQuery({
     queryKey: ["pub-meta", slug],
@@ -173,6 +211,11 @@ export default function PublicBookPage() {
     enabled: !!slug && !!branchId && !!professionalId && !!serviceId && !!onDate,
   });
 
+  const selectedService: ServiceItem | undefined = useMemo(
+    () => services.data?.items?.find((s: ServiceItem) => s.id === serviceId),
+    [services.data, serviceId]
+  );
+
   const book = useMutation({
     mutationFn: () =>
       publicApi.post(`/public/scheduling/${slug}/bookings`, {
@@ -184,11 +227,11 @@ export default function PublicBookPage() {
         client_name: clientName,
         client_email: clientEmail || null,
         client_phone: clientPhone || null,
+        intake_answers: Object.keys(intakeAnswers).length > 0 ? intakeAnswers : null,
       }),
     onSuccess: (res) => {
-      const token = res.data.manage_token;
-      toast.success("Cita registrada");
-      window.location.href = `/book/manage/${token}`;
+      toast.success("¡Cita registrada!");
+      window.location.href = `/book/manage/${res.data.manage_token}`;
     },
     onError: (e: unknown) => {
       const msg = axios.isAxiosError(e) ? e.response?.data?.detail : "Error al reservar";
@@ -196,10 +239,26 @@ export default function PublicBookPage() {
     },
   });
 
-  const selectedService = useMemo(
-    () => services.data?.items?.find((s: { id: string }) => s.id === serviceId),
-    [services.data, serviceId]
-  );
+  const joinWaitlist = useMutation({
+    mutationFn: () =>
+      publicApi.post(`/public/scheduling/${slug}/waitlist`, {
+        professional_id: professionalId,
+        service_id: serviceId,
+        branch_id: branchId,
+        desired_date: onDate,
+        client_name: clientName || "Cliente",
+        client_email: clientEmail || null,
+        client_phone: clientPhone || null,
+      }),
+    onSuccess: () => {
+      setWaitlistJoined(true);
+      toast.success("¡Anotado en lista de espera! Te avisaremos si hay disponibilidad.");
+    },
+    onError: () => toast.error("No se pudo unirse a la lista de espera"),
+  });
+
+  const hasIntakeForm = (selectedService?.intake_form_schema?.length ?? 0) > 0;
+  const noSlotsAvailable = slots.data && slots.data.slots?.length === 0 && !slots.isLoading;
 
   if (meta.isError) {
     return (
@@ -241,14 +300,14 @@ export default function PublicBookPage() {
               (typeof am.otras_comodidades === "string" && am.otras_comodidades.trim().length > 0);
             if (!hasInfo) return null;
             return (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 text-left text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900"
-            >
-              <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Sobre este lugar</p>
-              <PublicPlaceInfo loc={loc} ho={ho} am={am} />
-            </motion.div>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 text-left text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900"
+              >
+                <p className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">Sobre este lugar</p>
+                <PublicPlaceInfo loc={loc} ho={ho} am={am} />
+              </motion.div>
             );
           })()}
 
@@ -262,20 +321,40 @@ export default function PublicBookPage() {
               <h2 className="font-semibold text-slate-800 dark:text-slate-100">1. Servicio</h2>
               {services.isLoading && <Loader2 className="h-6 w-6 animate-spin text-blue-600" />}
               <div className="space-y-2">
-                {services.data?.items?.map((s: { id: string; name: string; duration_minutes: number }) => (
+                {services.data?.items?.map((s: ServiceItem) => (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => {
                       setServiceId(s.id);
+                      setIntakeAnswers({});
                       setStep(2);
                     }}
-                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-medium transition hover:border-blue-500 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    className="flex w-full flex-col gap-1 rounded-xl border border-slate-200 px-4 py-3 text-left text-sm transition hover:border-blue-500 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
                   >
-                    <span>
-                      {s.name} <span className="text-slate-400">({s.duration_minutes} min)</span>
-                    </span>
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">
+                        {s.name}{" "}
+                        <span className="text-slate-400 font-normal">({s.duration_minutes} min)</span>
+                      </span>
+                      <span className="font-semibold text-blue-700 dark:text-blue-400">
+                        {formatPrice(s.price_cents, s.currency)}
+                      </span>
+                    </div>
+                    {s.description && (
+                      <p className="text-xs text-slate-500 line-clamp-2">{s.description}</p>
+                    )}
+                    {s.deposit_required_cents > 0 && (
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        Depósito al reservar: {formatPrice(s.deposit_required_cents, s.currency)}
+                      </p>
+                    )}
+                    {s.cancellation_hours > 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Cancelación gratuita hasta {s.cancellation_hours}h antes
+                        {s.cancellation_fee_cents > 0 && ` · cargo tardío: ${formatPrice(s.cancellation_fee_cents, s.currency)}`}
+                      </p>
+                    )}
                   </button>
                 ))}
               </div>
@@ -347,6 +426,7 @@ export default function PublicBookPage() {
                   onChange={(e) => {
                     setOnDate(e.target.value);
                     setSlotStart(null);
+                    setWaitlistJoined(false);
                   }}
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
                 />
@@ -371,9 +451,53 @@ export default function PublicBookPage() {
                   </button>
                 ))}
               </div>
-              {slots.data?.slots?.length === 0 && !slots.isLoading && (
-                <p className="text-sm text-slate-500">No hay horarios disponibles ese día.</p>
+
+              {noSlotsAvailable && !waitlistJoined && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900 dark:bg-amber-950">
+                  <p className="font-medium text-amber-800 dark:text-amber-300">
+                    No hay horarios disponibles ese día.
+                  </p>
+                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                    ¿Quieres que te avisemos si se libera un espacio?
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    <input
+                      className="w-full rounded-lg border border-amber-200 px-3 py-2 text-xs dark:border-amber-800 dark:bg-slate-900"
+                      placeholder="Tu nombre"
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                    />
+                    <input
+                      type="email"
+                      className="w-full rounded-lg border border-amber-200 px-3 py-2 text-xs dark:border-amber-800 dark:bg-slate-900"
+                      placeholder="Email para notificarte"
+                      value={clientEmail}
+                      onChange={(e) => setClientEmail(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      disabled={!clientName.trim() || !clientEmail.trim() || joinWaitlist.isPending}
+                      onClick={() => joinWaitlist.mutate()}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {joinWaitlist.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Bell className="h-3.5 w-3.5" />
+                      )}
+                      Avisarme si hay disponibilidad
+                    </button>
+                  </div>
+                </div>
               )}
+
+              {waitlistJoined && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300">
+                  ✓ Anotado en lista de espera. Te enviaremos un email si se libera un espacio.
+                </div>
+              )}
+
+              {!noSlotsAvailable && slots.data?.slots?.length === 0 && slots.isLoading === false && null}
               <button type="button" onClick={() => setStep(3)} className="text-sm text-blue-600 hover:underline">
                 Volver
               </button>
@@ -386,6 +510,21 @@ export default function PublicBookPage() {
               <p className="text-xs text-slate-500">
                 {selectedService?.name} · {new Date(slotStart || "").toLocaleString("es-CL")}
               </p>
+
+              {selectedService && (
+                <CancellationPolicyBadge
+                  hours={selectedService.cancellation_hours}
+                  feeCents={selectedService.cancellation_fee_cents}
+                  currency={selectedService.currency}
+                />
+              )}
+
+              {selectedService && selectedService.deposit_required_cents > 0 && (
+                <div className="rounded-lg bg-blue-50 p-2.5 text-xs text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                  Se requiere depósito de {formatPrice(selectedService.deposit_required_cents, selectedService.currency)} al llegar.
+                </div>
+              )}
+
               <input
                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
                 placeholder="Nombre *"
@@ -405,6 +544,55 @@ export default function PublicBookPage() {
                 value={clientPhone}
                 onChange={(e) => setClientPhone(e.target.value)}
               />
+
+              {hasIntakeForm && (
+                <div className="space-y-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Información del servicio
+                  </p>
+                  {selectedService!.intake_form_schema.map((field) => (
+                    <div key={field.id}>
+                      <label className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                        {field.label}
+                        {field.required && <span className="ml-1 text-red-500">*</span>}
+                      </label>
+                      {field.type === "textarea" ? (
+                        <textarea
+                          rows={2}
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                          value={intakeAnswers[field.id] || ""}
+                          onChange={(e) =>
+                            setIntakeAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))
+                          }
+                        />
+                      ) : field.type === "select" ? (
+                        <select
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                          value={intakeAnswers[field.id] || ""}
+                          onChange={(e) =>
+                            setIntakeAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))
+                          }
+                        >
+                          <option value="">Seleccionar…</option>
+                          {field.options?.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-800"
+                          value={intakeAnswers[field.id] || ""}
+                          onChange={(e) =>
+                            setIntakeAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))
+                          }
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <button
                   type="button"

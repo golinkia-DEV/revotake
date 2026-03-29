@@ -9,6 +9,7 @@ from app.models.scheduling import (
     ProfessionalService,
     AvailabilityRule,
     AvailabilityRuleType,
+    WaitlistEntry,  # noqa: F401 — registra tabla en metadata
 )
 from app.models.client_document import ClientDocument  # noqa: F401 — registro en metadata
 from app.models.store import StoreMemberRole
@@ -332,6 +333,37 @@ STORE_TYPE_SEEDS = [
     },
 ]
 
+async def _migrate_agenda_features():
+    """Nuevas columnas de agenda: política cancelación, depósito, re-agendamiento, intake, descripción."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    stmts = [
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS description TEXT;",
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS cancellation_hours INTEGER DEFAULT 24;",
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS cancellation_fee_cents INTEGER DEFAULT 0;",
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS deposit_required_cents INTEGER DEFAULT 0;",
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS suggest_rebooking_days INTEGER DEFAULT 0;",
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS intake_form_schema JSONB;",
+    ]
+    for sql in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql))
+        except Exception as e:
+            print(f"Aviso migración agenda_features ({sql[:60]}…):", e)
+    # Tabla de lista de espera — se crea vía create_all, pero aseguramos el índice
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_waitlist_prof_svc_date "
+                    "ON waitlist_entries (professional_id, service_id, desired_date);"
+                )
+            )
+    except Exception as e:
+        print("Aviso índice waitlist:", e)
+
+
 async def _migrate_scheduling_operations_extensions():
     """Servicio → producto; cita → ticket y precio cobrado (panel atención / operaciones)."""
     if "postgresql" not in settings.DATABASE_URL:
@@ -380,6 +412,10 @@ async def init_db():
         await _migrate_scheduling_operations_extensions()
     except Exception as e:
         print("Aviso migración scheduling operations:", e)
+    try:
+        await _migrate_agenda_features()
+    except Exception as e:
+        print("Aviso migración agenda features:", e)
     try:
         await _migrate_permissions_column_and_userrole_client()
     except Exception as e:

@@ -138,6 +138,45 @@ async def create_appointment_booking(
     return appt, extra
 
 
+async def cancel_appointment_with_policy(
+    db: AsyncSession,
+    appointment: "Appointment",
+    service: "Service | None",
+    actor: str = "public",
+) -> dict:
+    """
+    Cancela una cita verificando la política de cancelación.
+    Retorna dict con ok, status, policy_violated, fee_cents.
+    """
+    from app.models.scheduling import AppointmentStatus, Service
+
+    if appointment.status in (AppointmentStatus.CANCELLED.value, AppointmentStatus.COMPLETED.value):
+        return {"ok": False, "error": "La cita no se puede cancelar"}
+
+    now = datetime.utcnow()
+    policy_violated = False
+    fee_cents = 0
+
+    if service and service.cancellation_hours > 0:
+        deadline = appointment.start_time - timedelta(hours=service.cancellation_hours)
+        if now > deadline:
+            policy_violated = True
+            fee_cents = service.cancellation_fee_cents or 0
+
+    appointment.status = AppointmentStatus.CANCELLED.value
+    return {
+        "ok": True,
+        "status": appointment.status,
+        "policy_violated": policy_violated,
+        "fee_cents": fee_cents,
+        "cancellation_fee_message": (
+            f"Se aplicará un cargo de {fee_cents // 100} por cancelación tardía."
+            if policy_violated and fee_cents > 0
+            else None
+        ),
+    }
+
+
 async def expire_pending_payment_holds(db: AsyncSession) -> int:
     """Libera citas pending_payment con hold vencido."""
     from sqlalchemy import update
@@ -160,8 +199,10 @@ async def schedule_reminder_jobs(
     store_id: str,
     appointment_id: str,
     start_time: datetime,
+    end_time: datetime | None = None,
+    suggest_rebooking_days: int = 0,
 ) -> None:
-    """Encola recordatorios 24h y 1h antes (y confirmación inmediata opcional)."""
+    """Encola recordatorios 24h y 1h antes, confirmación inmediata, reseña y re-agendamiento."""
     now = datetime.utcnow()
     t24 = start_time - timedelta(hours=24)
     t1 = start_time - timedelta(hours=1)
@@ -192,3 +233,13 @@ async def schedule_reminder_jobs(
             payload={},
         )
     )
+
+    # Solicitud de reseña: 2 horas después de que termina la cita
+    if end_time:
+        review_at = end_time + timedelta(hours=2)
+        add_job(NotificationJobKind.POST_VISIT_REVIEW.value, review_at)
+
+    # Sugerencia de re-agendamiento N días después del inicio
+    if suggest_rebooking_days > 0:
+        rebooking_at = start_time + timedelta(days=suggest_rebooking_days)
+        add_job(NotificationJobKind.REBOOKING_SUGGESTION.value, rebooking_at)

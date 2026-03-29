@@ -56,6 +56,9 @@ class NotificationJobKind(str, enum.Enum):
     REMINDER_24H = "reminder_24h"
     REMINDER_1H = "reminder_1h"
     BOOKING_CONFIRMATION = "booking_confirmation"
+    POST_VISIT_REVIEW = "post_visit_review"
+    REBOOKING_SUGGESTION = "rebooking_suggestion"
+    WAITLIST_SLOT_AVAILABLE = "waitlist_slot_available"
 
 
 class PaymentAttemptStatus(str, enum.Enum):
@@ -109,6 +112,7 @@ class Service(Base):
     store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
     buffer_before_minutes: Mapped[int] = mapped_column(Integer, default=0)
     buffer_after_minutes: Mapped[int] = mapped_column(Integer, default=0)
@@ -117,6 +121,16 @@ class Service(Base):
     # Producto de inventario vinculado (precio lista estimado); el cobro en sala puede diferir.
     product_id: Mapped[str | None] = mapped_column(ForeignKey("products.id"), nullable=True, index=True)
     allow_price_override: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Política de cancelación: horas mínimas de antelación sin cobro
+    cancellation_hours: Mapped[int] = mapped_column(Integer, default=24)
+    # Cobro por cancelación tardía (0 = sin cobro)
+    cancellation_fee_cents: Mapped[int] = mapped_column(Integer, default=0)
+    # Depósito requerido al reservar (0 = sin depósito)
+    deposit_required_cents: Mapped[int] = mapped_column(Integer, default=0)
+    # Sugerencia de re-agendamiento N días después (0 = desactivado)
+    suggest_rebooking_days: Mapped[int] = mapped_column(Integer, default=0)
+    # Esquema de preguntas de intake (JSON array de campos)
+    intake_form_schema: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
@@ -229,3 +243,25 @@ class PaymentAttempt(Base):
     raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class WaitlistEntry(Base):
+    """Cliente en lista de espera para un slot específico de profesional+servicio+fecha."""
+    __tablename__ = "waitlist_entries"
+    __table_args__ = (Index("ix_waitlist_prof_svc_date", "professional_id", "service_id", "desired_date"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    branch_id: Mapped[str] = mapped_column(ForeignKey("branches.id"), index=True)
+    professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
+    service_id: Mapped[str] = mapped_column(ForeignKey("scheduling_services.id"), index=True)
+    # Cliente puede o no estar registrado
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    client_name: Mapped[str] = mapped_column(String(200))
+    client_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    client_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    desired_date: Mapped[date] = mapped_column(Date, index=True)
+    # Estado: waiting, notified, booked, expired
+    status: Mapped[str] = mapped_column(String(32), default="waiting", index=True)
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
