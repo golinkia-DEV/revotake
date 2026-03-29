@@ -451,6 +451,11 @@ export default function StoresPage() {
                 </li>
                 <li>
                   <strong>Estacionamiento:</strong> {storeProfile.amenities.estacionamiento.replace(/_/g, " ")}
+                  {(storeProfile.amenities.estacionamiento === "si_gratis" ||
+                    storeProfile.amenities.estacionamiento === "limitado") &&
+                  storeProfile.amenities.estacionamiento_plazas.trim()
+                    ? ` · ${storeProfile.amenities.estacionamiento_plazas} plazas (aprox.)`
+                    : ""}
                   {storeProfile.amenities.estacionamiento_detalle ? ` · ${storeProfile.amenities.estacionamiento_detalle}` : ""}
                 </li>
                 <li>

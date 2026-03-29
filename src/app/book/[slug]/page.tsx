@@ -9,7 +9,8 @@ import { Calendar, ChevronRight, Loader2, MapPin, Clock, Car } from "lucide-reac
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import Link from "next/link";
-import { listSelectedAmenityLabels, mergeStoreProfileFromApi } from "@/lib/storeProfile";
+import { listSelectedAmenityEntries, mergeStoreProfileFromApi } from "@/lib/storeProfile";
+import { AMENITY_ICONS } from "@/lib/amenityIcons";
 
 const publicApi = axios.create({ baseURL: API_URL });
 
@@ -30,7 +31,10 @@ function PublicPlaceInfo({
   am: Record<string, unknown>;
 }) {
   const park = String(am.estacionamiento || "");
-  const amenityLabels = listSelectedAmenityLabels(mergeStoreProfileFromApi({ amenities: am }).amenities);
+  const parkPlazas = String(am.estacionamiento_plazas ?? "").trim();
+  const showParkPlazas =
+    (park === "si_gratis" || park === "limitado") && parkPlazas.length > 0 && /^\d+$/.test(parkPlazas);
+  const amenityEntries = listSelectedAmenityEntries(mergeStoreProfileFromApi({ amenities: am }).amenities);
   return (
     <div className="space-y-3 text-slate-700 dark:text-slate-200">
       {(loc.direccion_atencion || loc.comuna) && (
@@ -80,20 +84,27 @@ function PublicPlaceInfo({
           <Car className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
           <p className="text-xs">
             <span className="font-semibold">{PARK_LABELS[park] ?? park}</span>
+            {showParkPlazas
+              ? ` · aprox. ${parkPlazas} ${parkPlazas === "1" ? "plaza" : "plazas"}`
+              : ""}
             {am.estacionamiento_detalle ? ` · ${am.estacionamiento_detalle}` : ""}
           </p>
         </div>
       )}
-      {amenityLabels.length > 0 && (
+      {amenityEntries.length > 0 && (
         <div className="flex flex-wrap gap-2 text-xs">
-          {amenityLabels.map((label) => (
-            <span
-              key={label}
-              className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100"
-            >
-              {label}
-            </span>
-          ))}
+          {amenityEntries.map(({ key, label }) => {
+            const Icon = AMENITY_ICONS[key];
+            return (
+              <span
+                key={key}
+                className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 py-0.5 pl-2 pr-2.5 font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-100"
+              >
+                <Icon className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+                {label}
+              </span>
+            );
+          })}
         </div>
       )}
       {typeof am.otras_comodidades === "string" && am.otras_comodidades.trim() && (
@@ -226,7 +237,7 @@ export default function PublicBookPage() {
               Boolean(loc.direccion_atencion || loc.comuna || loc.referencias_acceso || loc.google_maps_url) ||
               Boolean(ho.lun_vie || ho.sabado || ho.domingo_feriados || ho.notas) ||
               Boolean(am.estacionamiento && am.estacionamiento !== "no") ||
-              listSelectedAmenityLabels(mergedAmenities).length > 0 ||
+              listSelectedAmenityEntries(mergedAmenities).length > 0 ||
               (typeof am.otras_comodidades === "string" && am.otras_comodidades.trim().length > 0);
             if (!hasInfo) return null;
             return (

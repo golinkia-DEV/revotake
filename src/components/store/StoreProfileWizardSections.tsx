@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, MapPin, Clock, Coffee, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { FileText, MapPin, Clock, Coffee, ChevronDown, ChevronUp, Sparkles, ListPlus } from "lucide-react";
 import clsx from "clsx";
 import type {
+  AmenityToggleKey,
   FiscalChile,
   LocationPublic,
   HorariosTienda,
@@ -11,6 +12,7 @@ import type {
   EstacionamientoTipo,
 } from "@/lib/storeProfile";
 import { AMENITIES_EXTENDED_DEFS, AMENITIES_QUICK_KEYS } from "@/lib/storeProfile";
+import { AMENITY_ICONS, PARKING_OPTION_ICONS } from "@/lib/amenityIcons";
 
 export function FiscalChileStep({ value, onChange }: { value: FiscalChile; onChange: (v: FiscalChile) => void }) {
   const f = (k: keyof FiscalChile, s: string) => onChange({ ...value, [k]: s });
@@ -166,6 +168,20 @@ const QUICK_LABELS: Record<(typeof AMENITIES_QUICK_KEYS)[number], string> = {
 export function AmenitiesStep({ value, onChange }: { value: Amenities; onChange: (v: Amenities) => void }) {
   const [showExtended, setShowExtended] = useState(false);
   const a = (k: keyof Amenities, v: string | boolean) => onChange({ ...value, [k]: v });
+  const setEstacionamiento = (tipo: EstacionamientoTipo) =>
+    onChange({
+      ...value,
+      estacionamiento: tipo,
+      ...(tipo !== "si_gratis" && tipo !== "limitado" ? { estacionamiento_plazas: "" } : {}),
+    });
+  const pidePlazas = value.estacionamiento === "si_gratis" || value.estacionamiento === "limitado";
+  const pideDetallePago = value.estacionamiento === "si_pago";
+  const plazasInputValue =
+    value.estacionamiento_plazas.trim() === ""
+      ? ""
+      : /^\d+$/.test(value.estacionamiento_plazas.trim())
+        ? Number(value.estacionamiento_plazas)
+        : "";
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
@@ -181,39 +197,90 @@ export function AmenitiesStep({ value, onChange }: { value: Amenities; onChange:
       <div>
         <label className="mb-2 block text-xs font-medium text-slate-600">Estacionamiento</label>
         <div className="flex flex-wrap gap-2">
-          {EST_OPTS.map((o) => (
-            <button
-              key={o.id}
-              type="button"
-              onClick={() => a("estacionamiento", o.id)}
-              className={clsx(
-                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                value.estacionamiento === o.id ? "border-primary bg-primary/10 text-primary" : "border-slate-200 bg-white text-slate-700"
-              )}
-            >
-              {o.label}
-            </button>
-          ))}
+          {EST_OPTS.map((o) => {
+            const ParkIcon = PARKING_OPTION_ICONS[o.id];
+            return (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => setEstacionamiento(o.id)}
+                className={clsx(
+                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                  value.estacionamiento === o.id ? "border-primary bg-primary/10 text-primary" : "border-slate-200 bg-white text-slate-700"
+                )}
+              >
+                <ParkIcon className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
+                {o.label}
+              </button>
+            );
+          })}
         </div>
-        <div className="mt-3">
-          <label className="mb-1 block text-xs text-slate-500">Detalle (plazas aprox., valor, horario del estacionamiento…)</label>
-          <input
-            value={value.estacionamiento_detalle}
-            onChange={(e) => a("estacionamiento_detalle", e.target.value)}
-            className="input-field"
-            placeholder="Ej.: 6 plazas en el sótano, acceso por calle X"
-          />
+        <div className="mt-3 space-y-3">
+          {pidePlazas && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Cantidad de plazas (aprox.)</label>
+              <input
+                type="number"
+                min={0}
+                max={9999}
+                step={1}
+                inputMode="numeric"
+                value={plazasInputValue === "" ? "" : plazasInputValue}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === "") {
+                    a("estacionamiento_plazas", "");
+                    return;
+                  }
+                  const n = Number(raw);
+                  if (!Number.isFinite(n)) return;
+                  a("estacionamiento_plazas", String(Math.min(9999, Math.max(0, Math.floor(n)))));
+                }}
+                className="input-field max-w-[10rem]"
+                placeholder="Ej.: 8"
+              />
+              <p className="mt-1 text-xs text-slate-500">Opcional; mejora la expectativa de quien reserva.</p>
+            </div>
+          )}
+          {pidePlazas && (
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Referencias de acceso (opcional)</label>
+              <input
+                value={value.estacionamiento_detalle}
+                onChange={(e) => a("estacionamiento_detalle", e.target.value)}
+                className="input-field"
+                placeholder="Ej.: Sótano, portón azul, calle lateral…"
+              />
+            </div>
+          )}
+          {pideDetallePago && (
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">Detalle (valor aprox., máquina, horario del estacionamiento…)</label>
+              <input
+                value={value.estacionamiento_detalle}
+                onChange={(e) => a("estacionamiento_detalle", e.target.value)}
+                className="input-field"
+                placeholder="Ej.: $800/h · máquina en entrada · 24 h"
+              />
+            </div>
+          )}
         </div>
       </div>
       <div>
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Comodidades frecuentes</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          {AMENITIES_QUICK_KEYS.map((k) => (
-            <label key={k} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-              <input type="checkbox" checked={value[k]} onChange={(e) => a(k, e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
-              <span className="text-sm text-slate-800">{QUICK_LABELS[k]}</span>
-            </label>
-          ))}
+          {AMENITIES_QUICK_KEYS.map((k) => {
+            const AmIcon = AMENITY_ICONS[k];
+            return (
+              <label key={k} className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <AmIcon className="h-4 w-4" aria-hidden />
+                </span>
+                <input type="checkbox" checked={value[k]} onChange={(e) => a(k, e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+                <span className="text-sm text-slate-800">{QUICK_LABELS[k]}</span>
+              </label>
+            );
+          })}
         </div>
       </div>
 
@@ -234,29 +301,40 @@ export function AmenitiesStep({ value, onChange }: { value: Amenities; onChange:
         </p>
         {showExtended && (
           <div className="mt-2 grid gap-2 border-t border-primary/10 pt-3 sm:grid-cols-2">
-            {AMENITIES_EXTENDED_DEFS.map(({ key, label, hint }) => (
-              <label
-                key={key}
-                className="flex cursor-pointer gap-3 rounded-lg border border-slate-200/90 bg-white p-3 shadow-sm"
-              >
-                <input
-                  type="checkbox"
-                  checked={Boolean(value[key])}
-                  onChange={(e) => a(key, e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300"
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-slate-800">{label}</span>
-                  {hint ? <span className="mt-0.5 block text-xs text-slate-500">{hint}</span> : null}
-                </span>
-              </label>
-            ))}
+            {AMENITIES_EXTENDED_DEFS.map(({ key, label, hint }) => {
+              const ExIcon = AMENITY_ICONS[key as AmenityToggleKey];
+              return (
+                <label
+                  key={key}
+                  className="flex cursor-pointer gap-3 rounded-lg border border-slate-200/90 bg-white p-3 shadow-sm"
+                >
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <ExIcon className="h-4 w-4" aria-hidden />
+                  </span>
+                  <div className="flex min-w-0 flex-1 gap-2">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(value[key])}
+                      onChange={(e) => a(key, e.target.checked)}
+                      className="mt-2 h-4 w-4 shrink-0 rounded border-slate-300"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-slate-800">{label}</span>
+                      {hint ? <span className="mt-0.5 block text-xs text-slate-500">{hint}</span> : null}
+                    </span>
+                  </div>
+                </label>
+              );
+            })}
           </div>
         )}
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-600">Otras comodidades (opcional)</label>
+        <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
+          <ListPlus className="h-3.5 w-3.5 text-primary" aria-hidden />
+          Otras comodidades (opcional)
+        </label>
         <textarea
           value={value.otras_comodidades}
           onChange={(e) => a("otras_comodidades", e.target.value)}

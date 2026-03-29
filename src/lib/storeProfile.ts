@@ -36,6 +36,8 @@ export type EstacionamientoTipo = "no" | "si_gratis" | "si_pago" | "limitado";
 
 export interface Amenities {
   estacionamiento: EstacionamientoTipo;
+  /** Cantidad aproximada de plazas; aplica si `si_gratis` o `limitado`. */
+  estacionamiento_plazas: string;
   estacionamiento_detalle: string;
   cafeteria: boolean;
   wifi: boolean;
@@ -60,6 +62,11 @@ export interface Amenities {
   terraza_exterior: boolean;
   otras_comodidades: string;
 }
+
+/** Solo campos booleanos de comodidades (para iconos y listados con clave). */
+export type AmenityToggleKey = {
+  [K in keyof Amenities]: Amenities[K] extends boolean ? K : never;
+}[keyof Amenities];
 
 /** Las 4 comodidades visibles por defecto en el paso del asistente */
 export const AMENITIES_QUICK_KEYS = ["cafeteria", "wifi", "sala_espera", "acceso_movilidad"] as const;
@@ -103,6 +110,18 @@ export function listSelectedAmenityLabels(value: Amenities): string[] {
   return labels;
 }
 
+/** Pares clave + etiqueta para UI con iconos (mismo orden que las etiquetas solas). */
+export function listSelectedAmenityEntries(value: Amenities): { key: AmenityToggleKey; label: string }[] {
+  const entries: { key: AmenityToggleKey; label: string }[] = [];
+  for (const k of AMENITIES_QUICK_KEYS) {
+    if (value[k]) entries.push({ key: k, label: AMENITIES_QUICK_LABELS[k] });
+  }
+  for (const { key, label } of AMENITIES_EXTENDED_DEFS) {
+    if (value[key as AmenityToggleKey]) entries.push({ key: key as AmenityToggleKey, label });
+  }
+  return entries;
+}
+
 export interface StoreProfile {
   fiscal_chile: FiscalChile;
   location_public: LocationPublic;
@@ -141,6 +160,7 @@ export const emptyHorarios = (): HorariosTienda => ({
 
 export const emptyAmenities = (): Amenities => ({
   estacionamiento: "no",
+  estacionamiento_plazas: "",
   estacionamiento_detalle: "",
   cafeteria: false,
   wifi: false,
@@ -199,6 +219,7 @@ export function mergeStoreProfileFromApi(raw: unknown): StoreProfile {
     amenities: {
       ...e.amenities,
       estacionamiento: (am.estacionamiento as Amenities["estacionamiento"]) || e.amenities.estacionamiento,
+      estacionamiento_plazas: String(am.estacionamiento_plazas ?? ""),
       estacionamiento_detalle: String(am.estacionamiento_detalle ?? ""),
       cafeteria: Boolean(am.cafeteria),
       wifi: Boolean(am.wifi),
