@@ -31,7 +31,7 @@ class Ticket(Base):
     priority: Mapped[str] = mapped_column(String, default="medium")
     client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True)
     assigned_to: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
-    metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    extra_data: Mapped[dict] = mapped_column(JSON, default=dict)
     due_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)

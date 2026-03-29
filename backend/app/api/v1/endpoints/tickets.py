@@ -19,7 +19,7 @@ class TicketCreate(BaseModel):
     priority: str = "medium"
     client_id: Optional[str] = None
     assigned_to: Optional[str] = None
-    metadata: dict = {}
+    extra_data: dict = {}
     due_date: Optional[datetime] = None
 
 class TicketUpdate(BaseModel):
@@ -28,7 +28,7 @@ class TicketUpdate(BaseModel):
     status: Optional[TicketStatus] = None
     priority: Optional[str] = None
     assigned_to: Optional[str] = None
-    metadata: Optional[dict] = None
+    extra_data: Optional[dict] = None
     due_date: Optional[datetime] = None
 
 @router.get("/")
