@@ -555,6 +555,22 @@ async def _migrate_agenda_features():
         print("Aviso índice waitlist:", e)
 
 
+async def _migrate_service_menu_category():
+    """Categorías y orden en el menú de servicios (estilo catálogo por rubro)."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    stmts = [
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS category VARCHAR(120);",
+        "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS menu_sort_order INTEGER DEFAULT 0;",
+    ]
+    for sql in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql))
+        except Exception as e:
+            print(f"Aviso migración service_menu_category ({sql[:50]}…):", e)
+
+
 async def _migrate_scheduling_operations_extensions():
     """Servicio → producto; cita → ticket y precio cobrado (panel atención / operaciones)."""
     if "postgresql" not in settings.DATABASE_URL:
@@ -599,6 +615,10 @@ async def _migrate_scheduling_operations_extensions():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    try:
+        await _migrate_service_menu_category()
+    except Exception as e:
+        print("Aviso migración service menu category:", e)
     try:
         await _migrate_scheduling_operations_extensions()
     except Exception as e:

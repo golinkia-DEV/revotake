@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -64,7 +64,9 @@ async def public_meta(store_slug: str, db: AsyncSession = Depends(get_db)):
 async def public_services(store_slug: str, db: AsyncSession = Depends(get_db)):
     store = await _store_by_slug(db, store_slug)
     r = await db.execute(
-        select(Service).where(Service.store_id == store.id, Service.is_active.is_(True)).order_by(Service.name)
+        select(Service)
+        .where(Service.store_id == store.id, Service.is_active.is_(True))
+        .order_by(func.coalesce(Service.category, "").asc(), Service.menu_sort_order, Service.name)
     )
     items = r.scalars().all()
     return {
@@ -73,6 +75,8 @@ async def public_services(store_slug: str, db: AsyncSession = Depends(get_db)):
                 "id": s.id,
                 "name": s.name,
                 "slug": s.slug,
+                "category": (s.category or "").strip() or None,
+                "menu_sort_order": s.menu_sort_order,
                 "description": s.description,
                 "duration_minutes": s.duration_minutes,
                 "price_cents": s.price_cents,

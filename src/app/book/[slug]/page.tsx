@@ -5,7 +5,18 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { Calendar, ChevronRight, Loader2, MapPin, Clock, Car, AlertCircle, Bell } from "lucide-react";
+import {
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  MapPin,
+  Clock,
+  Car,
+  AlertCircle,
+  Bell,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import Link from "next/link";
@@ -24,6 +35,8 @@ const PARK_LABELS: Record<string, string> = {
 type ServiceItem = {
   id: string;
   name: string;
+  category?: string | null;
+  menu_sort_order?: number;
   description?: string;
   duration_minutes: number;
   price_cents: number;
@@ -33,6 +46,13 @@ type ServiceItem = {
   cancellation_fee_cents: number;
   intake_form_schema: IntakeField[];
 };
+
+const PUB_GENERAL = "__general__";
+
+function pubCategoryKey(c: string | null | undefined) {
+  const t = (c || "").trim();
+  return t ? t : PUB_GENERAL;
+}
 
 type IntakeField = {
   id: string;
@@ -169,6 +189,9 @@ export default function PublicBookPage() {
   const [clientPhone, setClientPhone] = useState("");
   const [intakeAnswers, setIntakeAnswers] = useState<Record<string, string>>({});
   const [waitlistJoined, setWaitlistJoined] = useState(false);
+  const [svcSearch, setSvcSearch] = useState("");
+  const [svcFilterCat, setSvcFilterCat] = useState<string | "__all__">("__all__");
+  const [svcOpenCats, setSvcOpenCats] = useState<Record<string, boolean>>({});
 
   const meta = useQuery({
     queryKey: ["pub-meta", slug],
@@ -215,6 +238,58 @@ export default function PublicBookPage() {
     () => services.data?.items?.find((s: ServiceItem) => s.id === serviceId),
     [services.data, serviceId]
   );
+
+  const pubItems: ServiceItem[] = services.data?.items ?? [];
+
+  const pubCategoryChips = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of pubItems) {
+      const t = (s.category || "").trim();
+      if (t) set.add(t);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+  }, [pubItems]);
+
+  const pubFiltered = useMemo(() => {
+    const q = svcSearch.trim().toLowerCase();
+    return pubItems.filter((s) => {
+      if (svcFilterCat !== "__all__") {
+        const k = pubCategoryKey(s.category);
+        if (svcFilterCat === PUB_GENERAL) {
+          if (k !== PUB_GENERAL) return false;
+        } else if ((s.category || "").trim() !== svcFilterCat) {
+          return false;
+        }
+      }
+      if (!q) return true;
+      const blob = `${s.name} ${s.description || ""} ${s.category || ""}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }, [pubItems, svcSearch, svcFilterCat]);
+
+  const pubGrouped = useMemo(() => {
+    const m = new Map<string, ServiceItem[]>();
+    for (const s of pubFiltered) {
+      const k = pubCategoryKey(s.category);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(s);
+    }
+    const keys = Array.from(m.keys()).sort((a, b) => {
+      if (a === PUB_GENERAL) return -1;
+      if (b === PUB_GENERAL) return 1;
+      return a.localeCompare(b, "es");
+    });
+    return keys.map((k) => ({
+      key: k,
+      title: k === PUB_GENERAL ? "Servicios" : k,
+      rows: m.get(k)!,
+    }));
+  }, [pubFiltered]);
+
+  const pubCatOpen = (key: string) => svcOpenCats[key] !== false;
+  const togglePubCat = (key: string) => {
+    setSvcOpenCats((o) => ({ ...o, [key]: o[key] === false ? true : false }));
+  };
 
   const book = useMutation({
     mutationFn: () =>
@@ -317,45 +392,128 @@ export default function PublicBookPage() {
           className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
         >
           {step === 1 && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <h2 className="font-semibold text-slate-800 dark:text-slate-100">1. Servicio</h2>
               {services.isLoading && <Loader2 className="h-6 w-6 animate-spin text-blue-600" />}
+              {!services.isLoading && pubItems.length > 0 && (
+                <>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="search"
+                      value={svcSearch}
+                      onChange={(e) => setSvcSearch(e.target.value)}
+                      placeholder="¿Qué servicio buscás?"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50/80 py-2.5 pl-10 pr-3 text-sm outline-none ring-blue-500/30 focus:border-blue-500 focus:ring-2 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-100"
+                    />
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <button
+                      type="button"
+                      onClick={() => setSvcFilterCat("__all__")}
+                      className={
+                        svcFilterCat === "__all__"
+                          ? "shrink-0 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
+                          : "shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                      }
+                    >
+                      Todos
+                    </button>
+                    {pubItems.some((s) => !((s.category || "").trim())) && (
+                      <button
+                        type="button"
+                        onClick={() => setSvcFilterCat(PUB_GENERAL)}
+                        className={
+                          svcFilterCat === PUB_GENERAL
+                            ? "shrink-0 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        }
+                      >
+                        General
+                      </button>
+                    )}
+                    {pubCategoryChips.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setSvcFilterCat(c)}
+                        className={
+                          svcFilterCat === c
+                            ? "shrink-0 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white"
+                            : "shrink-0 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                        }
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
-                {services.data?.items?.map((s: ServiceItem) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => {
-                      setServiceId(s.id);
-                      setIntakeAnswers({});
-                      setStep(2);
-                    }}
-                    className="flex w-full flex-col gap-1 rounded-xl border border-slate-200 px-4 py-3 text-left text-sm transition hover:border-blue-500 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                {!services.isLoading && pubItems.length === 0 && (
+                  <p className="text-center text-sm text-slate-500">No hay servicios disponibles por ahora.</p>
+                )}
+                {!services.isLoading && pubItems.length > 0 && pubFiltered.length === 0 && (
+                  <p className="text-center text-sm text-slate-500">No hay servicios que coincidan.</p>
+                )}
+                {pubGrouped.map(({ key, title, rows }) => (
+                  <div
+                    key={key}
+                    className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">
-                        {s.name}{" "}
-                        <span className="text-slate-400 font-normal">({s.duration_minutes} min)</span>
+                    <button
+                      type="button"
+                      onClick={() => togglePubCat(key)}
+                      className="flex w-full items-center justify-between gap-2 bg-slate-50/90 px-3 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-600 dark:bg-slate-800/80 dark:text-slate-300"
+                    >
+                      {title}
+                      <span className="flex items-center gap-1 font-normal normal-case text-slate-400">
+                        {rows.length}
+                        {pubCatOpen(key) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                       </span>
-                      <span className="font-semibold text-blue-700 dark:text-blue-400">
-                        {formatPrice(s.price_cents, s.currency)}
-                      </span>
-                    </div>
-                    {s.description && (
-                      <p className="text-xs text-slate-500 line-clamp-2">{s.description}</p>
+                    </button>
+                    {pubCatOpen(key) && (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {rows.map((s: ServiceItem) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setServiceId(s.id);
+                              setIntakeAnswers({});
+                              setStep(2);
+                            }}
+                            className="flex w-full flex-col gap-1 px-4 py-3 text-left text-sm transition hover:bg-blue-50/80 dark:hover:bg-slate-800/80"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-medium text-slate-900 dark:text-slate-100">
+                                {s.name}{" "}
+                                <span className="font-normal text-slate-400">({s.duration_minutes} min)</span>
+                              </span>
+                              <span className="shrink-0 font-semibold text-blue-700 dark:text-blue-400">
+                                {formatPrice(s.price_cents, s.currency)}
+                              </span>
+                            </div>
+                            {s.description && (
+                              <p className="text-xs text-slate-500 line-clamp-2">{s.description}</p>
+                            )}
+                            {s.deposit_required_cents > 0 && (
+                              <p className="text-xs text-slate-600 dark:text-slate-400">
+                                Depósito al reservar: {formatPrice(s.deposit_required_cents, s.currency)}
+                              </p>
+                            )}
+                            {s.cancellation_hours > 0 && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400">
+                                Cancelación gratuita hasta {s.cancellation_hours}h antes
+                                {s.cancellation_fee_cents > 0 &&
+                                  ` · cargo tardío: ${formatPrice(s.cancellation_fee_cents, s.currency)}`}
+                              </p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
                     )}
-                    {s.deposit_required_cents > 0 && (
-                      <p className="text-xs text-slate-600 dark:text-slate-400">
-                        Depósito al reservar: {formatPrice(s.deposit_required_cents, s.currency)}
-                      </p>
-                    )}
-                    {s.cancellation_hours > 0 && (
-                      <p className="text-xs text-amber-600 dark:text-amber-400">
-                        Cancelación gratuita hasta {s.cancellation_hours}h antes
-                        {s.cancellation_fee_cents > 0 && ` · cargo tardío: ${formatPrice(s.cancellation_fee_cents, s.currency)}`}
-                      </p>
-                    )}
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>

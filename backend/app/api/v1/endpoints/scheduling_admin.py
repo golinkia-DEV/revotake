@@ -203,6 +203,8 @@ async def patch_professional(
 class ServiceCreate(BaseModel):
     name: str
     slug: Optional[str] = None
+    category: Optional[str] = None
+    menu_sort_order: int = 0
     description: Optional[str] = None
     duration_minutes: int = 30
     buffer_before_minutes: int = 0
@@ -224,7 +226,9 @@ async def list_services(
     ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
 ):
     r = await db.execute(
-        select(Service).where(Service.store_id == ctx.store_id).order_by(Service.name)
+        select(Service)
+        .where(Service.store_id == ctx.store_id)
+        .order_by(func.coalesce(Service.category, "").asc(), Service.menu_sort_order, Service.name)
     )
     rows = r.scalars().all()
     return {
@@ -233,6 +237,8 @@ async def list_services(
                 "id": s.id,
                 "name": s.name,
                 "slug": s.slug,
+                "category": (s.category or "").strip() or None,
+                "menu_sort_order": s.menu_sort_order,
                 "description": s.description,
                 "duration_minutes": s.duration_minutes,
                 "buffer_before_minutes": s.buffer_before_minutes,
@@ -265,10 +271,13 @@ async def create_service(
         pr = await db.get(Product, pid)
         if not pr or pr.store_id != ctx.store_id:
             raise HTTPException(400, "Producto no pertenece a esta tienda")
+    cat = (data.category or "").strip() or None
     s = Service(
         store_id=ctx.store_id,
         name=data.name.strip(),
         slug=slug,
+        category=cat,
+        menu_sort_order=data.menu_sort_order,
         description=data.description,
         duration_minutes=data.duration_minutes,
         buffer_before_minutes=data.buffer_before_minutes,
@@ -292,6 +301,8 @@ class ServicePatch(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     name: Optional[str] = None
+    category: Optional[str] = None
+    menu_sort_order: Optional[int] = None
     description: Optional[str] = None
     duration_minutes: Optional[int] = None
     buffer_before_minutes: Optional[int] = None
@@ -319,6 +330,12 @@ async def patch_service(
     if not s or s.store_id != ctx.store_id:
         raise HTTPException(404, "No encontrado")
     raw = data.model_dump(exclude_unset=True)
+    if "category" in raw:
+        c = raw.pop("category")
+        if c is None:
+            s.category = None
+        else:
+            s.category = str(c).strip() or None
     if "product_id" in raw:
         pid = raw["product_id"]
         if pid is None or pid == "":
