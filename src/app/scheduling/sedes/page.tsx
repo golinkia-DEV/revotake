@@ -8,6 +8,7 @@ import { getStoreId } from "@/lib/store";
 import { CHILE_REGIONES_COMUNAS } from "@/lib/chileRegionesComunas";
 import Link from "next/link";
 import { MapPin, Plus, Save, Users } from "lucide-react";
+import { toast } from "sonner";
 
 type BranchRow = {
   id: string;
@@ -94,9 +95,26 @@ export default function SchedulingSedesPage() {
   });
 
   const createProfessional = useMutation({
-    mutationFn: (body: { name: string; email?: string; branch_ids: string[]; service_ids: string[] }) =>
-      api.post("/scheduling/professionals", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduling-professionals"] }),
+    mutationFn: (body: {
+      name: string;
+      email: string;
+      phone: string;
+      branch_ids: string[];
+      service_ids: string[];
+      service_commissions: Record<string, number>;
+      product_commission_percent: number | null;
+    }) => api.post("/scheduling/professionals", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduling-professionals"] });
+      toast.success("Invitación enviada por correo");
+    },
+    onError: (err: unknown) => {
+      const msg =
+        err && typeof err === "object" && "response" in err
+          ? String((err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? "")
+          : "";
+      toast.error(msg || "No se pudo crear el profesional");
+    },
   });
 
   const patchProfessional = useMutation({
@@ -108,8 +126,11 @@ export default function SchedulingSedesPage() {
   const [proDraft, setProDraft] = useState<Record<string, string[]>>({});
   const [newProName, setNewProName] = useState("");
   const [newProEmail, setNewProEmail] = useState("");
+  const [newProPhone, setNewProPhone] = useState("");
   const [newProBranches, setNewProBranches] = useState<string[]>([]);
   const [newProServices, setNewProServices] = useState<string[]>([]);
+  const [newProServiceCommission, setNewProServiceCommission] = useState("0");
+  const [newProProductCommission, setNewProProductCommission] = useState("");
 
   function draftBranches(p: ProfessionalRow): string[] {
     return proDraft[p.id] ?? p.branch_ids;
@@ -308,19 +329,54 @@ export default function SchedulingSedesPage() {
 
         <div className="mt-8 border-t border-slate-100 pt-6 dark:border-slate-800">
           <div className="mb-3 font-semibold text-on-surface">Agregar profesional</div>
+          <p className="mb-3 text-xs text-slate-500">
+            Mismo flujo que <Link href="/scheduling/profesionales" className="font-semibold text-primary hover:underline">Crear profesional</Link>: correo + celular, invitación por correo (Resend o SMTP) y comisiones. Comisión de servicios se aplica igual a todos los servicios marcados abajo.
+          </p>
           <div className="grid gap-3 md:grid-cols-2">
             <input
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-              placeholder="Nombre"
+              placeholder="Nombre *"
               value={newProName}
               onChange={(e) => setNewProName(e.target.value)}
             />
             <input
               className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-              placeholder="Email (opcional)"
+              type="email"
+              placeholder="Correo *"
               value={newProEmail}
               onChange={(e) => setNewProEmail(e.target.value)}
             />
+            <input
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 md:col-span-2"
+              placeholder="Celular *"
+              value={newProPhone}
+              onChange={(e) => setNewProPhone(e.target.value)}
+            />
+            <label className="block text-sm md:col-span-2">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">Comisión % (todos los servicios marcados)</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                className="w-full max-w-xs rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                value={newProServiceCommission}
+                onChange={(e) => setNewProServiceCommission(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm md:col-span-2">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">Comisión productos % (opcional, único para todos)</span>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                className="w-full max-w-xs rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                value={newProProductCommission}
+                onChange={(e) => setNewProProductCommission(e.target.value)}
+                placeholder="Vacío = sin comisión productos"
+              />
+            </label>
           </div>
           <p className="mt-2 text-xs text-slate-500">Sedes donde atiende (al menos una):</p>
           <div className="mt-2 flex flex-wrap gap-3">
@@ -371,24 +427,43 @@ export default function SchedulingSedesPage() {
             type="button"
             disabled={
               !newProName.trim() ||
+              !newProEmail.trim().includes("@") ||
+              newProPhone.trim().length < 6 ||
               newProBranches.length === 0 ||
-              (activeServices.length > 0 && newProServices.length === 0) ||
+              newProServices.length === 0 ||
+              activeServices.length === 0 ||
               createProfessional.isPending
             }
             onClick={() => {
+              const pct = parseFloat(newProServiceCommission) || 0;
+              const service_commissions: Record<string, number> = {};
+              for (const sid of newProServices) {
+                service_commissions[sid] = pct;
+              }
+              let product_commission_percent: number | null = null;
+              if (newProProductCommission.trim() !== "") {
+                const p = parseFloat(newProProductCommission.replace(",", "."));
+                if (!Number.isNaN(p) && p >= 0 && p <= 100) product_commission_percent = p;
+              }
               createProfessional.mutate(
                 {
                   name: newProName.trim(),
-                  email: newProEmail.trim() || undefined,
+                  email: newProEmail.trim(),
+                  phone: newProPhone.trim(),
                   branch_ids: newProBranches,
                   service_ids: newProServices,
+                  service_commissions,
+                  product_commission_percent,
                 },
                 {
                   onSuccess: () => {
                     setNewProName("");
                     setNewProEmail("");
+                    setNewProPhone("");
                     setNewProBranches([]);
                     setNewProServices([]);
+                    setNewProServiceCommission("0");
+                    setNewProProductCommission("");
                   },
                 }
               );

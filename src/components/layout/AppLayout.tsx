@@ -96,11 +96,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [showHelp, setShowHelp] = useState(false);
 
   useEffect(() => {
+    if (pathname?.startsWith("/profesional")) return;
     if (!isAuthenticated()) router.push("/login");
-  }, [router]);
+  }, [router, pathname]);
   useEffect(() => {
     if (!isAuthenticated()) return;
-    if (pathname === "/login" || pathname?.startsWith("/stores")) return;
+    if (pathname === "/login" || pathname?.startsWith("/stores") || pathname?.startsWith("/profesional")) return;
     if (!getStoreId()) router.replace("/stores");
   }, [pathname, router]);
 

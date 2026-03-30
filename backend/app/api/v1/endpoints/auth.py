@@ -1,13 +1,16 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_token
 from app.core.permissions import effective_permissions
 from app.models.user import User, UserRole
-from app.models.store import StoreMember
+from app.models.store import StoreMember, StoreMemberRole, Store
+from app.models.scheduling import Professional
 from app.core.config import settings
 
 router = APIRouter()
@@ -111,3 +114,90 @@ async def me(
         else:
             out["store_context"] = None
     return out
+
+
+class ProfessionalInviteAccept(BaseModel):
+    token: str = Field(..., min_length=10, max_length=80)
+    password: str = Field(..., min_length=8, max_length=128)
+    name: str | None = Field(None, max_length=200)
+
+
+@router.get("/professional-invite/{token}")
+async def professional_invite_preview(token: str, db: AsyncSession = Depends(get_db)):
+    """Datos públicos para la pantalla de activación (sin autenticación)."""
+    r = await db.execute(select(Professional).where(Professional.invite_token == token.strip()))
+    p = r.scalar_one_or_none()
+    if not p or not p.invite_expires_at:
+        raise HTTPException(status_code=400, detail="Enlace inválido o expirado")
+    if p.invite_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="El enlace expiró. Pedí a la tienda que reenvíe la invitación.")
+    if p.user_id:
+        raise HTTPException(status_code=400, detail="Esta invitación ya fue utilizada")
+    st = await db.get(Store, p.store_id)
+    return {
+        "valid": True,
+        "store_name": st.name if st else "Tienda",
+        "professional_name": p.name,
+        "email": p.email,
+    }
+
+
+@router.post("/professional-invite/accept")
+async def professional_invite_accept(data: ProfessionalInviteAccept, db: AsyncSession = Depends(get_db)):
+    """Crea usuario operador, membresía en la tienda y vincula el perfil profesional."""
+    tok = data.token.strip()
+    r = await db.execute(select(Professional).where(Professional.invite_token == tok))
+    p = r.scalar_one_or_none()
+    if not p or not p.invite_expires_at:
+        raise HTTPException(status_code=400, detail="Enlace inválido")
+    if p.invite_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="El enlace expiró")
+    if p.user_id:
+        raise HTTPException(status_code=400, detail="Esta invitación ya fue utilizada")
+    email = (p.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="El perfil no tiene correo configurado")
+
+    ex_u = await db.execute(select(User).where(User.email == email))
+    if ex_u.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="Ya existe una cuenta con este correo. Iniciá sesión y pedí a la tienda que vincule tu usuario.",
+        )
+
+    display_name = (data.name or p.name or "Profesional").strip()[:200]
+    user = User(
+        email=email,
+        name=display_name,
+        hashed_password=get_password_hash(data.password),
+        role=UserRole.OPERATOR,
+    )
+    db.add(user)
+    await db.flush()
+
+    sm_ex = await db.execute(
+        select(StoreMember).where(StoreMember.user_id == user.id, StoreMember.store_id == p.store_id)
+    )
+    if sm_ex.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Conflicto de membresía en la tienda")
+
+    db.add(StoreMember(user_id=user.id, store_id=p.store_id, role=StoreMemberRole.OPERATOR))
+    p.user_id = user.id
+    p.name = display_name
+    p.invite_token = None
+    p.invite_expires_at = None
+
+    access = create_access_token(
+        {"sub": user.id, "role": user.role.value, "global_role": user.role.value}
+    )
+    return {
+        "access_token": access,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role.value,
+            "global_role": user.role.value,
+        },
+    }

@@ -2,11 +2,13 @@
 import csv
 import io
 import re
+import secrets
+from urllib.parse import quote
 from datetime import date, datetime, time, timedelta
 from typing import Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
 from sqlalchemy import select, func, delete, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +31,7 @@ from app.models.client import Client
 from app.models.product import Product
 from app.models.store import StoreMember
 from app.models.client_document import ClientDocument
+from app.services.mail import send_html_email, mail_configured
 from app.models.ticket import Ticket, TicketStatus
 from app.models.scheduling import (
     Branch,
@@ -178,9 +181,14 @@ async def patch_branch(
 
 class ProfessionalCreate(BaseModel):
     name: str
-    email: Optional[str] = None
+    email: EmailStr
+    phone: str = Field(..., min_length=6, max_length=40)
     branch_ids: list[str] = Field(default_factory=list)
     service_ids: list[str] = Field(default_factory=list)
+    # Porcentaje 0–100 por cada servicio asignado (clave = service_id)
+    service_commissions: dict[str, float] = Field(default_factory=dict)
+    # Un solo % para comisión sobre productos (inventario); null = sin comisión en productos
+    product_commission_percent: Optional[float] = Field(None, ge=0, le=100)
 
 
 @router.get("/professionals")
@@ -192,6 +200,12 @@ async def list_professionals(
         select(Professional).where(Professional.store_id == ctx.store_id).order_by(Professional.name)
     )
     rows = r.scalars().all()
+    pids = [p.id for p in rows]
+    comm_by_pro: dict[str, dict[str, float]] = {pid: {} for pid in pids}
+    if pids:
+        psq = await db.execute(select(ProfessionalService).where(ProfessionalService.professional_id.in_(pids)))
+        for ps in psq.scalars().all():
+            comm_by_pro.setdefault(ps.professional_id, {})[ps.service_id] = float(ps.commission_percent or 0)
     out = []
     for p in rows:
         br = await db.execute(
@@ -203,8 +217,12 @@ async def list_professionals(
                 "id": p.id,
                 "name": p.name,
                 "email": p.email,
+                "phone": p.phone,
                 "user_id": p.user_id,
                 "branch_ids": bids,
+                "invite_pending": bool(p.invite_token and not p.user_id),
+                "product_commission_percent": p.product_commission_percent,
+                "service_commissions": comm_by_pro.get(p.id, {}),
             }
         )
     return {"items": out}
@@ -218,7 +236,48 @@ async def create_professional(
 ):
     if not data.branch_ids:
         raise HTTPException(400, "Indica al menos una sede donde atiende el profesional")
-    p = Professional(store_id=ctx.store_id, name=data.name.strip(), email=data.email)
+    if not data.service_ids:
+        raise HTTPException(400, "Indica al menos un servicio que realiza el profesional")
+    email_norm = str(data.email).strip().lower()
+    phone_norm = data.phone.strip()
+
+    ex_user = await db.execute(select(User.id).where(User.email == email_norm))
+    if ex_user.scalar_one_or_none():
+        raise HTTPException(400, "Ya existe un usuario con ese correo")
+
+    pend = await db.execute(
+        select(Professional.id).where(
+            Professional.store_id == ctx.store_id,
+            Professional.email == email_norm,
+            Professional.user_id.is_(None),
+            Professional.invite_token.isnot(None),
+        )
+    )
+    if pend.scalar_one_or_none():
+        raise HTTPException(400, "Ya hay una invitación pendiente para este correo en la tienda")
+
+    comm = {k: float(v) for k, v in data.service_commissions.items()}
+    for sid in data.service_ids:
+        comm.setdefault(sid, 0.0)
+    for sid, pct in comm.items():
+        if sid not in data.service_ids:
+            continue
+        if pct < 0 or pct > 100:
+            raise HTTPException(400, "Cada comisión de servicio debe estar entre 0 y 100")
+
+    token = secrets.token_urlsafe(36)[:64]
+    exp = datetime.utcnow() + timedelta(days=7)
+
+    p = Professional(
+        store_id=ctx.store_id,
+        name=data.name.strip(),
+        email=email_norm,
+        phone=phone_norm,
+        user_id=None,
+        invite_token=token,
+        invite_expires_at=exp,
+        product_commission_percent=data.product_commission_percent,
+    )
     db.add(p)
     await db.flush()
     for i, bid in enumerate(data.branch_ids):
@@ -243,8 +302,32 @@ async def create_professional(
             )
         )
         if dup.scalar_one_or_none() is None:
-            db.add(ProfessionalService(professional_id=p.id, service_id=sv.id))
-    return {"id": p.id}
+            db.add(
+                ProfessionalService(
+                    professional_id=p.id,
+                    service_id=sv.id,
+                    commission_percent=comm.get(sid, 0.0),
+                )
+            )
+    base = (settings.FRONTEND_URL or "http://localhost:3000").rstrip("/")
+    link = f"{base}/profesional/activar?token={quote(token, safe='')}"
+    subject = "Activá tu acceso en RevoTake"
+    html = f"""<p>Hola {p.name},</p>
+<p>Te dieron de alta como profesional. Para crear tu contraseña y acceder al panel, abrí este enlace (válido 7 días):</p>
+<p><a href="{link}">{link}</a></p>
+<p>Si no solicitaste esto, ignorá el mensaje.</p>"""
+    if not mail_configured():
+        raise HTTPException(
+            503,
+            "Correo no configurado: definí RESEND_API_KEY + RESEND_FROM_EMAIL (Resend) o SMTP_USER/SMTP_PASSWORD.",
+        )
+    sent = send_html_email(email_norm, subject, html)
+    if not sent:
+        raise HTTPException(
+            502,
+            "No se pudo enviar el correo de invitación. Revisá Resend (API key / dominio) o SMTP e intentá de nuevo.",
+        )
+    return {"id": p.id, "invite_sent": True, "invite_expires_at": exp.isoformat()}
 
 
 class ProfessionalPatch(BaseModel):
@@ -303,6 +386,8 @@ async def patch_professional(
                     "El usuario debe ser miembro de esta tienda (invítalo antes en la tienda).",
                 )
             p.user_id = uid
+            p.invite_token = None
+            p.invite_expires_at = None
     return {"id": p.id, "user_id": p.user_id}
 
 

@@ -36,6 +36,11 @@ class StoreUpdate(BaseModel):
     settings: Optional[dict] = None
 
 
+class MemberPermissionsBody(BaseModel):
+    """null = quitar override y usar permisos por defecto del rol."""
+    permissions: Optional[list[str]] = None
+
+
 def _deep_merge_settings(base: dict, update: dict) -> dict:
     out = dict(base)
     for k, v in update.items():
@@ -125,6 +130,52 @@ async def get_store(
         "permissions": sorted(effective_permissions(member)),
         "settings": store.settings,
     }
+
+
+@router.get("/{store_id}/members")
+async def list_store_members(
+    store_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_admin),
+):
+    if store_id != ctx.store_id:
+        raise HTTPException(status_code=400, detail="La tienda no coincide con X-Store-Id")
+    r = await db.execute(select(StoreMember, User).join(User, User.id == StoreMember.user_id).where(StoreMember.store_id == store_id))
+    out = []
+    for member, user in r.all():
+        out.append(
+            {
+                "user_id": user.id,
+                "email": user.email,
+                "name": user.name,
+                "role": member.role.value,
+                "permissions": sorted(effective_permissions(member)),
+                "permissions_override": member.permissions,
+            }
+        )
+    out.sort(key=lambda x: (x["role"], x["name"] or x["email"]))
+    return {"items": out}
+
+
+@router.patch("/{store_id}/members/{target_user_id}/permissions")
+async def patch_store_member_permissions(
+    store_id: str,
+    target_user_id: str,
+    data: MemberPermissionsBody,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_admin),
+):
+    if store_id != ctx.store_id:
+        raise HTTPException(status_code=400, detail="La tienda no coincide con X-Store-Id")
+    r = await db.execute(
+        select(StoreMember).where(StoreMember.store_id == store_id, StoreMember.user_id == target_user_id)
+    )
+    member = r.scalar_one_or_none()
+    if not member:
+        raise HTTPException(status_code=404, detail="Miembro no encontrado")
+    member.permissions = data.permissions
+    await db.flush()
+    return {"ok": True, "permissions": sorted(effective_permissions(member))}
 
 
 @router.patch("/{store_id}")

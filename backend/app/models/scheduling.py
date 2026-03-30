@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Boolean,
     Integer,
+    Float,
     Index,
     UniqueConstraint,
 )
@@ -94,6 +95,12 @@ class Professional(Base):
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Invitación: hasta que acepta correo y define contraseña, sin user_id
+    invite_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    invite_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # % único sobre ventas de productos (inventario) para este profesional; null = sin comisión productos
+    product_commission_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
@@ -151,6 +158,8 @@ class ProfessionalService(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
     service_id: Mapped[str] = mapped_column(ForeignKey("scheduling_services.id"), index=True)
+    # % de comisión sobre el cobro del servicio (0–100); null se trata como 0 en reportes
+    commission_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class AvailabilityRule(Base):

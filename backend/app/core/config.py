@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
     ALLOW_OPEN_REGISTRATION: bool = False
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "https://revotake.vercel.app", "https://revotake.golinkia.com"]
+    # Resend (https://resend.com): si RESEND_API_KEY tiene valor, el envío usa la API y no SMTP.
+    RESEND_API_KEY: str = ""
+    # Remitente verificado en Resend, ej. "RevoTake <notificaciones@tudominio.com>" o onboarding@resend.dev (solo pruebas)
+    RESEND_FROM_EMAIL: str = ""
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

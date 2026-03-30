@@ -49,6 +49,46 @@ async def _migrate_permissions_column_and_userrole_client():
             print("Aviso migración store_members.permissions (sqlite):", e)
 
 
+async def _migrate_professional_invite_and_commissions():
+    """Teléfono, invitación por correo, comisiones por servicio y % productos."""
+    if "postgresql" in settings.DATABASE_URL:
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS phone VARCHAR(40);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_token VARCHAR(64);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMP;"))
+            await conn.execute(
+                text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS product_commission_percent DOUBLE PRECISION;")
+            )
+            await conn.execute(
+                text(
+                    "ALTER TABLE professional_services ADD COLUMN IF NOT EXISTS commission_percent DOUBLE PRECISION;"
+                )
+            )
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS ix_professionals_invite_token "
+                        "ON professionals (invite_token) WHERE invite_token IS NOT NULL;"
+                    )
+                )
+        except Exception as e:
+            print("Aviso índice invite_token professionals:", e)
+    elif "sqlite" in settings.DATABASE_URL:
+        for stmt in (
+            "ALTER TABLE professionals ADD COLUMN phone VARCHAR(40);",
+            "ALTER TABLE professionals ADD COLUMN invite_token VARCHAR(64);",
+            "ALTER TABLE professionals ADD COLUMN invite_expires_at TIMESTAMP;",
+            "ALTER TABLE professionals ADD COLUMN product_commission_percent FLOAT;",
+            "ALTER TABLE professional_services ADD COLUMN commission_percent FLOAT;",
+        ):
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(stmt))
+            except Exception:
+                pass
+
+
 async def _migrate_meeting_confirmation_columns():
     if "postgresql" not in settings.DATABASE_URL:
         return
@@ -499,6 +539,10 @@ async def init_db():
         await _migrate_meetings_store_id()
     except Exception as e:
         print("Aviso migración meetings.store_id:", e)
+    try:
+        await _migrate_professional_invite_and_commissions()
+    except Exception as e:
+        print("Aviso migración professional invite/commissions:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:
@@ -577,7 +621,12 @@ async def init_db():
             )
             session.add(branch)
             await session.flush()
-            prof = Professional(store_id=store.id, name="Profesional demo", email="demo@revotake.com")
+            prof = Professional(
+                store_id=store.id,
+                name="Profesional demo",
+                email="demo@revotake.com",
+                phone="+56900000000",
+            )
             session.add(prof)
             await session.flush()
             session.add(ProfessionalBranch(professional_id=prof.id, branch_id=branch.id, is_primary=True))

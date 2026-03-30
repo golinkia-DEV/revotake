@@ -31,6 +31,8 @@ VER_REPORTES_COMISIONES = "ver_reportes_comisiones"
 EXPORTAR_REGISTROS = "exportar_registros"
 REGISTRAR_VENTAS = "registrar_ventas"
 VER_BASE_CLIENTES = "ver_base_clientes"
+# Clientes vistos en la propia agenda (profesional); el gerente puede quitar este permiso en el miembro
+VER_CLIENTES_PROPIOS = "ver_clientes_propios"
 GESTIONAR_CLIENTES = "gestionar_clientes"
 VER_FICHAS = "ver_fichas"
 CREAR_FICHAS = "crear_fichas"
@@ -58,6 +60,7 @@ ALL_STORE_PERMISSIONS: FrozenSet[str] = frozenset(
         EXPORTAR_REGISTROS,
         REGISTRAR_VENTAS,
         VER_BASE_CLIENTES,
+        VER_CLIENTES_PROPIOS,
         GESTIONAR_CLIENTES,
         VER_FICHAS,
         CREAR_FICHAS,
@@ -89,6 +92,7 @@ def _default_permissions_for_role(role: StoreMemberRole) -> FrozenSet[str]:
                 EXPORTAR_REGISTROS,
                 REGISTRAR_VENTAS,
                 VER_BASE_CLIENTES,
+                VER_CLIENTES_PROPIOS,
                 GESTIONAR_CLIENTES,
                 VER_FICHAS,
                 CREAR_FICHAS,
@@ -103,6 +107,7 @@ def _default_permissions_for_role(role: StoreMemberRole) -> FrozenSet[str]:
     return frozenset(
         {
             VER_AGENDA_PROPIA,
+            VER_CLIENTES_PROPIOS,
             VER_REPORTES_COMISIONES,
             VER_FICHAS,
             VER_CAMPOS_PERSONALIZADOS,

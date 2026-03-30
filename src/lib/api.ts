@@ -8,7 +8,10 @@ const api = axios.create({ baseURL: API_URL });
 function needsStoreHeader(url: string, method: string | undefined): boolean {
   const m = (method || "get").toLowerCase();
   const path = (url || "").split("?")[0].replace(/\/+$/, "") || "/";
-  if (path.startsWith("/auth")) return false;
+  if (path.startsWith("/auth")) {
+    if (path === "/auth/me" || path.startsWith("/auth/me/")) return !!getStoreId();
+    return false;
+  }
   if (path.startsWith("/public/")) return false;
   if (path.startsWith("/webhooks/")) return false;
   if (path.startsWith("/store-types")) return false;

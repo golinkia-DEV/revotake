@@ -8,8 +8,14 @@ import { logout } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { useQuery } from "@tanstack/react-query";
+import api from "@/lib/api";
+import { getStoreId } from "@/lib/store";
+import { isAuthenticated } from "@/lib/auth";
 
-const nav: { href: string; label: string; icon: string; filled?: boolean }[] = [
+type NavItem = { href: string; label: string; icon: string; filled?: boolean; perm?: string | null };
+
+const FULL_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { href: "/stores", label: "Tiendas", icon: "storefront" },
   { href: "/kanban", label: "Operaciones", icon: "settings_suggest", filled: true },
@@ -20,15 +26,41 @@ const nav: { href: string; label: string; icon: string; filled?: boolean }[] = [
   { href: "/scheduling/profesionales", label: "Crear profesional", icon: "person_add", filled: true },
   { href: "/scheduling/sedes", label: "Sedes y equipo", icon: "location_city", filled: true },
   { href: "/scheduling/panel", label: "Panel atención", icon: "clinical_notes", filled: true },
+  { href: "/equipo", label: "Equipo y permisos", icon: "admin_panel_settings", filled: true },
   { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true },
   { href: "/products", label: "Inventario", icon: "inventory_2" },
   { href: "/ai", label: "Asistente IA", icon: "psychology", filled: true },
   { href: "/settings", label: "Configuración", icon: "settings" },
 ];
 
+/** Menú reducido para rol operador (profesional): según permisos que deje el gerente. */
+const OPERATOR_NAV: NavItem[] = [
+  { href: "/stores", label: "Tiendas", icon: "storefront", perm: null },
+  { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true, perm: "ver_agenda_propia" },
+  { href: "/mi-clientes", label: "Mis clientes", icon: "groups", perm: "ver_clientes_propios" },
+  { href: "/mi-produccion", label: "Mi producción", icon: "payments", filled: true, perm: "ver_reportes_comisiones" },
+];
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const storeId = typeof window !== "undefined" ? getStoreId() : null;
+
+  const { data: me } = useQuery({
+    queryKey: ["auth-me", storeId],
+    queryFn: () => api.get("/auth/me").then((r) => r.data),
+    enabled: !!storeId && isAuthenticated(),
+    staleTime: 30_000,
+  });
+
+  const isOperator = me?.store_context?.member_role === "operator";
+  const perms = new Set<string>((me?.store_context?.permissions as string[] | undefined) ?? []);
+
+  const nav: NavItem[] = isOperator
+    ? OPERATOR_NAV.filter((it) => it.perm == null || perms.has(it.perm))
+    : FULL_NAV.filter(
+        (it) => it.href !== "/equipo" || me?.store_context?.member_role === "admin"
+      );
 
   function handleLogout() {
     logout();
@@ -49,8 +81,11 @@ export default function Sidebar() {
       <div className="px-1 pb-2">
         <StoreSwitcher />
       </div>
+      {isOperator && (
+        <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Vista profesional</p>
+      )}
       <nav className="flex-1 space-y-1">
-        {nav.map(({ href, icon, label, filled }) => {
+        {nav.map(({ href, icon, label, filled, perm: _p }) => {
           const active = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link key={href} href={href}>
