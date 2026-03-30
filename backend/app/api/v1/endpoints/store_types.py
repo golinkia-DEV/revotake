@@ -3,9 +3,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.deps import require_global_admin
 from app.models.store_type import StoreType
 from app.models.user import User
-from app.api.v1.endpoints.auth import get_current_user
 
 router = APIRouter()
 
@@ -47,7 +47,8 @@ def _type_sort_key(t: StoreType) -> tuple:
 
 
 @router.get("/")
-async def list_store_types(db: AsyncSession = Depends(get_db), _user: User = Depends(get_current_user)):
+async def list_store_types(db: AsyncSession = Depends(get_db), _user: User = Depends(require_global_admin)):
+    """Catálogo de rubros para el alta de tienda; solo administración global."""
     result = await db.execute(select(StoreType))
     rows = list(result.scalars().all())
     rows.sort(key=_type_sort_key)

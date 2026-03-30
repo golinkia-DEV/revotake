@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import StoreContext, require_store, require_store_admin
+from app.core.deps import StoreContext, require_store, require_store_admin, require_global_admin
 from app.core.permissions import effective_permissions
 from app.models.store import Store, StoreMember, StoreMemberRole
 from app.models.store_type import StoreType
@@ -81,7 +81,12 @@ async def my_stores(db: AsyncSession = Depends(get_db), user: User = Depends(get
 
 
 @router.post("/")
-async def create_store(data: StoreCreate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+async def create_store(
+    data: StoreCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_global_admin),
+):
+    """Solo un administrador global puede dar de alta tiendas; los gerentes de local no crean nuevos tenants."""
     st = await db.get(StoreType, data.store_type_id)
     if not st:
         raise HTTPException(status_code=400, detail="Tipo de tienda no válido")

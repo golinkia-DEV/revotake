@@ -21,6 +21,7 @@ import {
   ImageIcon,
 } from "lucide-react";
 import api from "@/lib/api";
+import { getUser } from "@/lib/auth";
 import AppLayout from "@/components/layout/AppLayout";
 import { toast } from "sonner";
 import { setStoreId, getStoreId } from "@/lib/store";
@@ -104,6 +105,7 @@ function StoreTypeSelector({
 }
 
 export default function StoresPage() {
+  const canCreateStores = getUser()?.role === "admin";
   const router = useRouter();
   const qc = useQueryClient();
   const [name, setName] = useState("");
@@ -133,6 +135,7 @@ export default function StoresPage() {
   const { data: types } = useQuery({
     queryKey: ["store-types"],
     queryFn: () => api.get("/store-types/").then((r) => r.data),
+    enabled: canCreateStores,
   });
 
   const { data: stores } = useQuery({
@@ -246,7 +249,16 @@ export default function StoresPage() {
       }
       router.push("/dashboard");
     },
-    onError: () => toast.error("No se pudo crear la tienda"),
+    onError: (e: unknown) => {
+      const d = axios.isAxiosError(e) ? e.response?.data?.detail : null;
+      const msg =
+        typeof d === "string" ? d : d != null ? JSON.stringify(d) : "No se pudo crear la tienda";
+      toast.error(
+        e && axios.isAxiosError(e) && e.response?.status === 403
+          ? "Solo un administrador de la plataforma puede crear tiendas nuevas."
+          : msg
+      );
+    },
   });
 
   const saveConfig = useMutation({
@@ -302,30 +314,32 @@ export default function StoresPage() {
             tiene su agenda, menú de servicios con fotos, logotipo en reservas y asistente IA.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setShowForm(!showForm);
-            if (!showForm) {
-              setWizardStep(1);
-              setWorkflowNotes("");
-              setName("");
-              setWorkflowPreset("sales");
-              setBusinessCtx("");
-              setTone("professional");
-              setDurationMin(30);
-              setReminderHours(24);
-              setChairCount(4);
-              setRoomCount(1);
-              setStoreProfile(emptyStoreProfile());
-              setClientImportMode("skip");
-              setClientImportText("");
-            }
-          }}
-          className="btn-primary flex items-center gap-2 self-start"
-        >
-          <Plus className="w-4 h-4" /> Nueva tienda
-        </button>
+        {canCreateStores ? (
+          <button
+            type="button"
+            onClick={() => {
+              setShowForm(!showForm);
+              if (!showForm) {
+                setWizardStep(1);
+                setWorkflowNotes("");
+                setName("");
+                setWorkflowPreset("sales");
+                setBusinessCtx("");
+                setTone("professional");
+                setDurationMin(30);
+                setReminderHours(24);
+                setChairCount(4);
+                setRoomCount(1);
+                setStoreProfile(emptyStoreProfile());
+                setClientImportMode("skip");
+                setClientImportText("");
+              }
+            }}
+            className="btn-primary flex items-center gap-2 self-start"
+          >
+            <Plus className="w-4 h-4" /> Nueva tienda
+          </button>
+        ) : null}
       </div>
 
       {showForm && (
@@ -953,27 +967,36 @@ export default function StoresPage() {
 
       {stores?.items?.length === 0 && !showForm && (
         <div className="text-center py-16 glass-card">
-          <p className="text-slate-500 mb-4">Aún no tienes tiendas. Crea una para comenzar.</p>
-          <button
-            type="button"
-            onClick={() => {
-              setShowForm(true);
-              setWizardStep(1);
-              setWorkflowNotes("");
-              setName("");
-              setWorkflowPreset("sales");
-              setBusinessCtx("");
-              setTone("professional");
-              setDurationMin(30);
-              setReminderHours(24);
-              setChairCount(4);
-              setRoomCount(1);
-              setStoreProfile(emptyStoreProfile());
-            }}
-            className="btn-primary inline-flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" /> Crear primera tienda
-          </button>
+          {canCreateStores ? (
+            <>
+              <p className="text-slate-500 mb-4">Aún no tienes tiendas. Crea una para comenzar.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(true);
+                  setWizardStep(1);
+                  setWorkflowNotes("");
+                  setName("");
+                  setWorkflowPreset("sales");
+                  setBusinessCtx("");
+                  setTone("professional");
+                  setDurationMin(30);
+                  setReminderHours(24);
+                  setChairCount(4);
+                  setRoomCount(1);
+                  setStoreProfile(emptyStoreProfile());
+                }}
+                className="btn-primary inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> Crear primera tienda
+              </button>
+            </>
+          ) : (
+            <p className="mx-auto max-w-md text-slate-600">
+              Tu cuenta no tiene tiendas asignadas. Solo un administrador de la plataforma puede dar de alta un local y
+              asociarte; desde la tienda solo gestionás tu negocio, sin crear otros tenants ni ver datos de otros locales.
+            </p>
+          )}
         </div>
       )}
 

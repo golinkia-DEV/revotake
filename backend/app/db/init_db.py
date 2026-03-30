@@ -1,6 +1,6 @@
 import asyncio
 from app.core.database import engine, Base
-from app.models import User, UserRole, StoreType, Store, StoreMember
+from app.models import User, UserRole, StoreType, Store, StoreMember, Product, ProductBranchStock
 from app.models.scheduling import (
     Branch,
     Professional,
@@ -17,7 +17,7 @@ from app.models.store import StoreMemberRole
 from app.core.security import get_password_hash
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from datetime import time
 
 from app.core.config import settings
@@ -600,6 +600,106 @@ async def _migrate_work_stations():
                 pass
 
 
+async def _migrate_product_branch_stock():
+    """Stock por sede y sede en compras."""
+    if "postgresql" in settings.DATABASE_URL:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS product_branch_stocks (
+                        id VARCHAR NOT NULL PRIMARY KEY,
+                        product_id VARCHAR NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                        branch_id VARCHAR NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+                        quantity INTEGER NOT NULL DEFAULT 0,
+                        lead_time_days INTEGER,
+                        created_at TIMESTAMP,
+                        CONSTRAINT uq_product_branch_stock UNIQUE (product_id, branch_id)
+                    );
+                    """
+                )
+            )
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pbs_product ON product_branch_stocks (product_id);"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pbs_branch ON product_branch_stocks (branch_id);"))
+        async with engine.begin() as conn:
+            await conn.execute(text("ALTER TABLE purchases ADD COLUMN IF NOT EXISTS branch_id VARCHAR;"))
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        """
+                        DO $body$
+                        BEGIN
+                          IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'purchases_branch_id_fkey'
+                          ) THEN
+                            ALTER TABLE purchases
+                            ADD CONSTRAINT purchases_branch_id_fkey
+                            FOREIGN KEY (branch_id) REFERENCES branches(id);
+                          END IF;
+                        END $body$ LANGUAGE plpgsql;
+                        """
+                    )
+                )
+        except Exception as e:
+            print("Aviso FK purchases.branch_id:", e)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_purchases_branch ON purchases (branch_id);"))
+        except Exception as e:
+            print("Aviso índice purchases.branch_id:", e)
+    elif "sqlite" in settings.DATABASE_URL:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS product_branch_stocks (
+                            id VARCHAR NOT NULL PRIMARY KEY,
+                            product_id VARCHAR NOT NULL REFERENCES products(id),
+                            branch_id VARCHAR NOT NULL REFERENCES branches(id),
+                            quantity INTEGER NOT NULL DEFAULT 0,
+                            lead_time_days INTEGER,
+                            created_at TIMESTAMP,
+                            UNIQUE (product_id, branch_id)
+                        );
+                        """
+                    )
+                )
+        except Exception as e:
+            print("Aviso sqlite product_branch_stocks:", e)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TABLE purchases ADD COLUMN branch_id VARCHAR REFERENCES branches(id);"))
+        except Exception:
+            pass
+
+
+async def _backfill_product_branch_stocks():
+    AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with AsyncSessionLocal() as session:
+        pr = await session.execute(select(Product.id, Product.store_id, Product.stock))
+        for pid, sid, stock_val in pr.all():
+            cnt = await session.execute(
+                select(func.count()).select_from(ProductBranchStock).where(ProductBranchStock.product_id == pid)
+            )
+            if (cnt.scalar() or 0) > 0:
+                continue
+            br = await session.execute(
+                select(Branch)
+                .where(Branch.store_id == sid, Branch.is_active.is_(True))
+                .order_by(Branch.created_at)
+            )
+            branches = list(br.scalars().all())
+            if not branches:
+                continue
+            q0 = int(stock_val or 0)
+            session.add(ProductBranchStock(product_id=pid, branch_id=branches[0].id, quantity=q0))
+            for b in branches[1:]:
+                session.add(ProductBranchStock(product_id=pid, branch_id=b.id, quantity=0))
+        await session.commit()
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -647,6 +747,14 @@ async def init_db():
         await _migrate_work_stations()
     except Exception as e:
         print("Aviso migración work_stations:", e)
+    try:
+        await _migrate_product_branch_stock()
+    except Exception as e:
+        print("Aviso migración product_branch_stocks:", e)
+    try:
+        await _backfill_product_branch_stocks()
+    except Exception as e:
+        print("Aviso backfill product_branch_stocks:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:
