@@ -146,7 +146,20 @@ async def public_branches(store_slug: str, db: AsyncSession = Depends(get_db)):
         select(Branch).where(Branch.store_id == store.id, Branch.is_active.is_(True)).order_by(Branch.name)
     )
     items = r.scalars().all()
-    return {"items": [{"id": b.id, "name": b.name, "slug": b.slug, "timezone": b.timezone} for b in items]}
+    return {
+        "items": [
+            {
+                "id": b.id,
+                "name": b.name,
+                "slug": b.slug,
+                "timezone": b.timezone,
+                "region": b.region,
+                "comuna": b.comuna,
+                "address_line": b.address_line,
+            }
+            for b in items
+        ]
+    }
 
 
 @router.get("/{store_slug}/professionals")

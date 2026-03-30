@@ -380,6 +380,33 @@ async def _migrate_service_images():
         print("Aviso migración service_images:", e)
 
 
+async def _migrate_branch_location_chile():
+    """Sedes: región, comuna, dirección y zona horaria por defecto Chile."""
+    if "postgresql" in settings.DATABASE_URL:
+        stmts = [
+            "ALTER TABLE branches ADD COLUMN IF NOT EXISTS region VARCHAR(200);",
+            "ALTER TABLE branches ADD COLUMN IF NOT EXISTS comuna VARCHAR(120);",
+            "ALTER TABLE branches ADD COLUMN IF NOT EXISTS address_line TEXT;",
+        ]
+        for sql in stmts:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(sql))
+            except Exception as e:
+                print(f"Aviso migración branch_location ({sql[:50]}…):", e)
+    elif "sqlite" in settings.DATABASE_URL:
+        for col, typ in (
+            ("region", "VARCHAR(200)"),
+            ("comuna", "VARCHAR(120)"),
+            ("address_line", "TEXT"),
+        ):
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(f"ALTER TABLE branches ADD COLUMN {col} {typ};"))
+            except Exception as e:
+                print(f"Aviso sqlite branches.{col}:", e)
+
+
 async def _migrate_scheduling_operations_extensions():
     """Servicio → producto; cita → ticket y precio cobrado (panel atención / operaciones)."""
     if "postgresql" not in settings.DATABASE_URL:
@@ -448,6 +475,10 @@ async def init_db():
         await _migrate_scheduling_operations_extensions()
     except Exception as e:
         print("Aviso migración scheduling operations:", e)
+    try:
+        await _migrate_branch_location_chile()
+    except Exception as e:
+        print("Aviso migración branch location:", e)
     try:
         await _migrate_agenda_features()
     except Exception as e:
@@ -527,12 +558,22 @@ async def init_db():
 
         br = await session.execute(select(Branch).where(Branch.store_id == store.id, Branch.slug == "sede-central"))
         branch = br.scalar_one_or_none()
+        if branch and not branch.region and branch.slug == "sede-central":
+            branch.region = "Región Metropolitana de Santiago"
+            branch.comuna = branch.comuna or "Santiago"
+            branch.address_line = branch.address_line or "Av. Libertador Bernardo O'Higgins 1234 (demo)"
+            if not branch.timezone or branch.timezone == "UTC":
+                branch.timezone = "America/Santiago"
+            await session.commit()
         if not branch:
             branch = Branch(
                 store_id=store.id,
                 name="Sede central",
                 slug="sede-central",
-                timezone="UTC",
+                timezone="America/Santiago",
+                region="Región Metropolitana de Santiago",
+                comuna="Santiago",
+                address_line="Av. Libertador Bernardo O'Higgins 1234 (demo)",
             )
             session.add(branch)
             await session.flush()

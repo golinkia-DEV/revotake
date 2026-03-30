@@ -17,6 +17,7 @@ const nav: { href: string; label: string; icon: string; filled?: boolean }[] = [
   { href: "/calendar", label: "Agenda", icon: "calendar_today" },
   { href: "/scheduling", label: "Citas", icon: "event_available", filled: true },
   { href: "/scheduling/services", label: "Menú de servicios", icon: "menu_book", filled: true },
+  { href: "/scheduling/sedes", label: "Sedes y equipo", icon: "location_city", filled: true },
   { href: "/scheduling/panel", label: "Panel atención", icon: "clinical_notes", filled: true },
   { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true },
   { href: "/products", label: "Inventario", icon: "inventory_2" },

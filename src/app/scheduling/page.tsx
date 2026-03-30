@@ -51,6 +51,9 @@ export default function SchedulingAdminPage() {
             <Link href="/scheduling/services" className="hover:underline">
               Menú de servicios (categorías y precios)
             </Link>
+            <Link href="/scheduling/sedes" className="hover:underline">
+              Sedes (regiones, comunas) y sedes por profesional
+            </Link>
             <Link href="/scheduling/panel" className="hover:underline">
               Panel de atención
             </Link>

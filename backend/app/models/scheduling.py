@@ -77,7 +77,11 @@ class Branch(Base):
     store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
     name: Mapped[str] = mapped_column(String(200))
     slug: Mapped[str] = mapped_column(String(120), index=True)
-    timezone: Mapped[str] = mapped_column(String(64), default="UTC")
+    timezone: Mapped[str] = mapped_column(String(64), default="America/Santiago")
+    # Ubicación (Chile): nombres según catálogo oficial de regiones/comunas
+    region: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    comuna: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    address_line: Mapped[str | None] = mapped_column(Text, nullable=True)
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

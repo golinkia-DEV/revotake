@@ -68,7 +68,35 @@ def _slugify(name: str) -> str:
 class BranchCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     slug: Optional[str] = None
-    timezone: str = "UTC"
+    timezone: str = "America/Santiago"
+    region: Optional[str] = Field(None, max_length=200)
+    comuna: Optional[str] = Field(None, max_length=120)
+    address_line: Optional[str] = None
+
+
+class BranchPatch(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    slug: Optional[str] = None
+    timezone: Optional[str] = None
+    region: Optional[str] = Field(None, max_length=200)
+    comuna: Optional[str] = Field(None, max_length=120)
+    address_line: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _branch_out(b: Branch) -> dict:
+    return {
+        "id": b.id,
+        "name": b.name,
+        "slug": b.slug,
+        "timezone": b.timezone,
+        "region": b.region,
+        "comuna": b.comuna,
+        "address_line": b.address_line,
+        "is_active": b.is_active,
+    }
 
 
 @router.get("/branches")
@@ -78,7 +106,7 @@ async def list_branches(
 ):
     r = await db.execute(select(Branch).where(Branch.store_id == ctx.store_id).order_by(Branch.name))
     rows = r.scalars().all()
-    return {"items": [{"id": b.id, "name": b.name, "slug": b.slug, "timezone": b.timezone, "is_active": b.is_active} for b in rows]}
+    return {"items": [_branch_out(b) for b in rows]}
 
 
 @router.post("/branches")
@@ -88,10 +116,61 @@ async def create_branch(
     ctx: StoreContext = Depends(require_store_admin),
 ):
     slug = _slugify(data.slug or data.name)
-    b = Branch(store_id=ctx.store_id, name=data.name.strip(), slug=slug, timezone=data.timezone)
+    dup = await db.execute(
+        select(Branch.id).where(Branch.store_id == ctx.store_id, Branch.slug == slug)
+    )
+    if dup.scalar_one_or_none():
+        raise HTTPException(400, "Ya existe una sede con ese identificador (slug)")
+    b = Branch(
+        store_id=ctx.store_id,
+        name=data.name.strip(),
+        slug=slug,
+        timezone=data.timezone or "America/Santiago",
+        region=(data.region or "").strip() or None,
+        comuna=(data.comuna or "").strip() or None,
+        address_line=(data.address_line or "").strip() or None,
+    )
     db.add(b)
     await db.flush()
     return {"id": b.id, "slug": b.slug}
+
+
+@router.patch("/branches/{branch_id}")
+async def patch_branch(
+    branch_id: str,
+    data: BranchPatch,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_admin),
+):
+    b = await db.get(Branch, branch_id)
+    if not b or b.store_id != ctx.store_id:
+        raise HTTPException(404, "Sede no encontrada")
+    if data.name is not None:
+        b.name = data.name.strip()
+    if data.slug is not None:
+        new_slug = _slugify(data.slug)
+        dup = await db.execute(
+            select(Branch.id).where(
+                Branch.store_id == ctx.store_id,
+                Branch.slug == new_slug,
+                Branch.id != branch_id,
+            )
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(400, "Ya existe otra sede con ese identificador (slug)")
+        b.slug = new_slug
+    if data.timezone is not None:
+        b.timezone = data.timezone.strip() or "America/Santiago"
+    if data.region is not None:
+        b.region = data.region.strip() or None
+    if data.comuna is not None:
+        b.comuna = data.comuna.strip() or None
+    if data.address_line is not None:
+        b.address_line = data.address_line.strip() or None
+    if data.is_active is not None:
+        b.is_active = data.is_active
+    await db.flush()
+    return _branch_out(b)
 
 
 # --- Professionals ---
@@ -136,14 +215,22 @@ async def create_professional(
     db: AsyncSession = Depends(get_db),
     ctx: StoreContext = Depends(require_store_admin),
 ):
+    if not data.branch_ids:
+        raise HTTPException(400, "Indica al menos una sede donde atiende el profesional")
     p = Professional(store_id=ctx.store_id, name=data.name.strip(), email=data.email)
     db.add(p)
     await db.flush()
-    for bid in data.branch_ids:
+    for i, bid in enumerate(data.branch_ids):
         br = await db.get(Branch, bid)
         if not br or br.store_id != ctx.store_id:
             raise HTTPException(400, "Sucursal inválida")
-        db.add(ProfessionalBranch(professional_id=p.id, branch_id=bid, is_primary=len(data.branch_ids) == 1))
+        db.add(
+            ProfessionalBranch(
+                professional_id=p.id,
+                branch_id=bid,
+                is_primary=(len(data.branch_ids) == 1 or i == 0),
+            )
+        )
     return {"id": p.id}
 
 
@@ -168,12 +255,20 @@ async def patch_professional(
     if data.name is not None:
         p.name = data.name.strip()
     if data.branch_ids is not None:
+        if len(data.branch_ids) == 0:
+            raise HTTPException(400, "Debe quedar al menos una sede asignada")
         await db.execute(delete(ProfessionalBranch).where(ProfessionalBranch.professional_id == p.id))
-        for bid in data.branch_ids:
+        for i, bid in enumerate(data.branch_ids):
             br = await db.get(Branch, bid)
             if not br or br.store_id != ctx.store_id:
                 raise HTTPException(400, "Sucursal inválida")
-            db.add(ProfessionalBranch(professional_id=p.id, branch_id=bid, is_primary=False))
+            db.add(
+                ProfessionalBranch(
+                    professional_id=p.id,
+                    branch_id=bid,
+                    is_primary=(len(data.branch_ids) == 1 or i == 0),
+                )
+            )
     raw = data.model_dump(exclude_unset=True)
     if "user_id" in raw:
         uid = raw["user_id"]

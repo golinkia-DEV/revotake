@@ -594,20 +594,41 @@ export default function PublicBookPage() {
             <div className="space-y-3">
               <h2 className="font-semibold text-slate-800 dark:text-slate-100">2. Sucursal</h2>
               <div className="space-y-2">
-                {branches.data?.items?.map((b: { id: string; name: string }) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => {
-                      setBranchId(b.id);
-                      setStep(3);
-                    }}
-                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-medium transition hover:border-blue-500 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                  >
-                    {b.name}
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                  </button>
-                ))}
+                {branches.data?.items?.map(
+                  (b: {
+                    id: string;
+                    name: string;
+                    comuna?: string | null;
+                    region?: string | null;
+                    address_line?: string | null;
+                  }) => {
+                    const loc = [b.comuna, b.region].filter(Boolean).join(" · ");
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => {
+                          setBranchId(b.id);
+                          setStep(3);
+                        }}
+                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-medium transition hover:border-blue-500 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate">{b.name}</span>
+                          {loc && (
+                            <span className="mt-0.5 block truncate text-xs font-normal text-slate-500">{loc}</span>
+                          )}
+                          {b.address_line && (
+                            <span className="mt-0.5 block truncate text-xs font-normal text-slate-400">
+                              {b.address_line}
+                            </span>
+                          )}
+                        </span>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                      </button>
+                    );
+                  }
+                )}
               </div>
               <button type="button" onClick={() => setStep(1)} className="text-sm text-blue-600 hover:underline">
                 Volver
