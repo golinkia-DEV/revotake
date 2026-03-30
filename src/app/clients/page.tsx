@@ -1,7 +1,7 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Plus, Search, Mail, Phone, Trash2, User, CalendarDays } from "lucide-react";
+import { Plus, Search, Mail, Phone, Trash2, User, CalendarDays, Pencil, X } from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { toast } from "sonner";
@@ -12,40 +12,76 @@ interface ClientItem {
   name: string;
   email: string | null;
   phone: string | null;
+  address?: string | null;
+  notes?: string | null;
   created_at: string;
   preferences?: Record<string, unknown>;
 }
+
+const EMPTY_FORM = { name: "", email: "", phone: "", address: "", notes: "", next_contact_date: "" };
 
 export default function ClientsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    address: "",
-    notes: "",
-    next_contact_date: "",
-  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
 
   const { data } = useQuery({
     queryKey: ["clients", search],
     queryFn: () => api.get(`/clients/?search=${search}&limit=100`).then((r) => r.data),
   });
 
+  function openCreate() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setShowForm(true);
+  }
+
+  function openEdit(c: ClientItem) {
+    setEditingId(c.id);
+    setForm({
+      name: c.name ?? "",
+      email: c.email ?? "",
+      phone: c.phone ?? "",
+      address: c.address ?? "",
+      notes: c.notes ?? "",
+      next_contact_date: typeof c.preferences?.next_contact_date === "string" ? c.preferences.next_contact_date : "",
+    });
+    setShowForm(true);
+  }
+
+  function closeForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+  }
+
   const create = useMutation({
-    mutationFn: (data: typeof form) => {
-      const { next_contact_date, ...rest } = data;
+    mutationFn: (d: typeof form) => {
+      const { next_contact_date, ...rest } = d;
       const preferences: Record<string, string> = {};
       if (next_contact_date) preferences.next_contact_date = next_contact_date;
       return api.post("/clients/", { ...rest, preferences });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["clients"] });
-      setShowForm(false);
-      setForm({ name: "", email: "", phone: "", address: "", notes: "", next_contact_date: "" });
+      closeForm();
       toast.success("Cliente creado");
+    },
+  });
+
+  const update = useMutation({
+    mutationFn: (d: typeof form) => {
+      const { next_contact_date, ...rest } = d;
+      const preferences: Record<string, string> = {};
+      if (next_contact_date) preferences.next_contact_date = next_contact_date;
+      return api.put(`/clients/${editingId}`, { ...rest, preferences });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      closeForm();
+      toast.success("Cliente actualizado");
     },
   });
 
@@ -56,6 +92,8 @@ export default function ClientsPage() {
       toast.success("Cliente eliminado");
     },
   });
+
+  const isPending = create.isPending || update.isPending;
 
   return (
     <AppLayout>
@@ -69,14 +107,23 @@ export default function ClientsPage() {
             persona (se guarda como recordatorio en su ficha).
           </p>
         </div>
-        <button type="button" onClick={() => setShowForm(!showForm)} className="btn-primary self-start">
+        <button type="button" onClick={openCreate} className="btn-primary self-start">
           <Plus className="h-4 w-4" /> Nuevo cliente
         </button>
       </div>
       {showForm && (
         <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="glass-card mb-6 p-6">
-          <h2 className="mb-1 font-semibold text-on-surface">Nuevo cliente</h2>
-          <p className="mb-4 text-sm text-slate-500">Completa los datos básicos. El calendario es opcional y ayuda a planificar seguimientos.</p>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-on-surface">{editingId ? "Editar cliente" : "Nuevo cliente"}</h2>
+              <p className="text-sm text-slate-500">
+                {editingId ? "Modifica los datos y guarda." : "Completa los datos básicos. El calendario es opcional y ayuda a planificar seguimientos."}
+              </p>
+            </div>
+            <button type="button" onClick={closeForm} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <input
               value={form.name}
@@ -123,10 +170,15 @@ export default function ClientsPage() {
             </div>
           </div>
           <div className="mt-4 flex gap-3">
-            <button type="button" onClick={() => create.mutate(form)} className="btn-primary">
-              Crear cliente
+            <button
+              type="button"
+              disabled={!form.name.trim() || isPending}
+              onClick={() => editingId ? update.mutate(form) : create.mutate(form)}
+              className="btn-primary disabled:opacity-50"
+            >
+              {editingId ? "Guardar cambios" : "Crear cliente"}
             </button>
-            <button type="button" onClick={() => setShowForm(false)} className="btn-ghost">
+            <button type="button" onClick={closeForm} className="btn-ghost">
               Cancelar
             </button>
           </div>
@@ -154,13 +206,22 @@ export default function ClientsPage() {
                   <p className="text-xs text-slate-500">{new Date(client.created_at).toLocaleDateString("es-CL")}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => remove.mutate(client.id)}
-                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => openEdit(client)}
+                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove.mutate(client.id)}
+                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             {client.email && (
               <div className="mb-1 flex items-center gap-2 text-sm text-slate-600">
