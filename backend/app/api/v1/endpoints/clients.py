@@ -169,10 +169,16 @@ Reglas:
 
 @router.get("/")
 async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+    from sqlalchemy import or_
     count_stmt = select(func.count(Client.id)).where(Client.store_id == ctx.store_id)
     query = select(Client).where(Client.store_id == ctx.store_id)
-    if search:
-        filt = Client.name.ilike(f"%{search}%")
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        filt = or_(
+            Client.name.ilike(term),
+            Client.email.ilike(term),
+            Client.phone.ilike(term),
+        )
         count_stmt = count_stmt.where(filt)
         query = query.where(filt)
     total = (await db.execute(count_stmt)).scalar() or 0
@@ -186,6 +192,8 @@ async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = N
                 "name": c.name,
                 "email": c.email,
                 "phone": c.phone,
+                "address": c.address,
+                "notes": c.notes,
                 "created_at": c.created_at,
                 "preferences": c.preferences or {},
             }

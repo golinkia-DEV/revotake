@@ -20,6 +20,7 @@ const nav: { href: string; label: string; icon: string; filled?: boolean }[] = [
   { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true },
   { href: "/products", label: "Inventario", icon: "inventory_2" },
   { href: "/ai", label: "Asistente IA", icon: "psychology", filled: true },
+  { href: "/settings", label: "Configuración", icon: "settings" },
 ];
 
 export default function Sidebar() {

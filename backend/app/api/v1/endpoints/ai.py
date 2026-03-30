@@ -17,10 +17,91 @@ from app.api.v1.endpoints.auth import get_current_user
 
 router = APIRouter()
 
+REVOTAKE_DOCS = """
+RevoTake es una plataforma de gestión empresarial con IA. Módulos disponibles:
+
+**Dashboard** (/dashboard): KPIs — clientes totales, tickets abiertos, alertas de stock, reuniones próximas.
+
+**Clientes** (/clients): CRM. Crear, editar, eliminar clientes. Buscar por nombre, email o teléfono. Importar en masa con IA pegando texto o Excel. Campo "Próximo contacto" para seguimiento.
+
+**Operaciones / Kanban** (/kanban): Tablero de tickets por estado. Tipos: LEAD, REUNIÓN, PEDIDO, INCIDENCIA, TAREA. Arrastrar columnas para cambiar estado.
+
+**Agenda / Reuniones** (/calendar): Reuniones con clientes. Envía confirmación por email con link para confirmar o declinar. Genera archivo .ics para Google Calendar/Outlook.
+
+**Citas** (/scheduling): Sistema de agenda de citas profesional.
+- Configuración: sucursales, profesionales, servicios (duración, precio, política cancelación, depósito, formulario intake, sugerencia re-agendamiento).
+- Reglas de disponibilidad: horarios semanales o excepciones por fecha.
+- Reserva pública: /book/{slug} — clientes reservan sin login.
+- Lista de espera: si no hay slots, el cliente se anota y recibe email automático al liberarse un espacio.
+- Notificaciones automáticas: confirmación, recordatorio 24h, recordatorio 1h, solicitud de reseña 2h después, sugerencia de re-agendamiento.
+- Panel atención (/scheduling/panel): sesiones activas, alertas de cierre, métricas de profesionales.
+- Mi agenda (/mi-agenda): vista personal del profesional.
+
+**Inventario** (/products): Productos con stock. Alertas automáticas de stock bajo/crítico. Registro de ventas que descuenta stock.
+
+**Asistente IA** (/ai): Chat con contexto del negocio. Puedes configurar el contexto de la tienda en Configuración → IA.
+
+**Configuración** (/settings):
+- Contexto IA de la tienda: texto libre que describe el negocio, servicios, precios, horarios, políticas.
+- Modo estricto: la IA solo responde sobre la información del negocio configurada, sin inventar.
+
+**Notificaciones**: Campanita en la barra superior. Muestra alertas de stock crítico/bajo, citas próximas 24h, reuniones próximas, clientes en lista de espera.
+
+**Tiendas** (/stores): Crear y gestionar múltiples tiendas. Cada tienda tiene su propia configuración, clientes, agenda e inventario.
+
+Para soporte adicional visita la documentación o contacta al equipo de RevoTake.
+"""
+
 class ChatMessage(BaseModel):
     message: str
     client_id: Optional[str] = None
     context: dict = {}
+
+class HelpMessage(BaseModel):
+    message: str
+
+class StoreContextUpdate(BaseModel):
+    business_context: str
+    strict_mode: bool = False
+
+@router.post("/help")
+async def ai_help(data: HelpMessage, current_user: User = Depends(get_current_user)):
+    """Responde preguntas sobre cómo usar RevoTake."""
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(400, "AI not configured")
+    system = f"""Eres el asistente de ayuda de RevoTake. Solo respondes preguntas sobre cómo usar la plataforma.
+Si te preguntan algo que no está relacionado con RevoTake, redirige amablemente al tema de la app.
+Responde en español, de forma concisa y clara.
+
+Documentación de RevoTake:
+{REVOTAKE_DOCS}"""
+    client_sdk = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    response = client_sdk.messages.create(
+        model=settings.ANTHROPIC_MODEL,
+        max_tokens=800,
+        system=system,
+        messages=[{"role": "user", "content": data.message}],
+    )
+    return {"response": response.content[0].text if response.content else ""}
+
+@router.post("/context")
+async def update_store_ai_context(
+    data: StoreContextUpdate,
+    ctx: StoreContext = Depends(require_store),
+    db: AsyncSession = Depends(get_db),
+):
+    """Actualiza el contexto IA de la tienda (business_context + strict_mode)."""
+    from app.models.store import Store
+    store = await db.get(Store, ctx.store_id)
+    if not store:
+        raise HTTPException(404, "Tienda no encontrada")
+    settings_dict = dict(store.settings or {})
+    ai_settings = dict(settings_dict.get("ai") or {})
+    ai_settings["business_context"] = data.business_context
+    ai_settings["strict_mode"] = data.strict_mode
+    settings_dict["ai"] = ai_settings
+    store.settings = settings_dict
+    return {"ok": True, "business_context_length": len(data.business_context), "strict_mode": data.strict_mode}
 
 @router.post("/chat")
 async def ai_chat(data: ChatMessage, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
@@ -31,10 +112,24 @@ async def ai_chat(data: ChatMessage, db: AsyncSession = Depends(get_db), current
     ai_cfg = st.get("ai") or {}
     business_ctx = ai_cfg.get("business_context") or ""
     tone = ai_cfg.get("tone") or "professional"
+    strict_mode = bool(ai_cfg.get("strict_mode", False))
 
-    system_context = f"""Eres el asistente de la tienda «{ctx.store.name}» en RevoTake.
+    if strict_mode and business_ctx:
+        system_context = f"""Eres el asistente virtual de «{ctx.store.name}».
 Tono: {tone}.
-Reglas y contexto del negocio (configuración de la tienda):
+INSTRUCCIÓN IMPORTANTE: Solo puedes responder usando la información que aparece a continuación.
+Si no sabes la respuesta basándote en este contexto, di exactamente: "No tengo esa información. Contacta directamente con {ctx.store.name}."
+No inventes datos, precios, horarios ni servicios que no estén en el contexto.
+
+=== CONTEXTO DEL NEGOCIO ===
+{business_ctx}
+===========================
+
+Responde siempre en español. Sé conciso y útil."""
+    else:
+        system_context = f"""Eres el asistente de la tienda «{ctx.store.name}» en RevoTake.
+Tono: {tone}.
+Contexto del negocio:
 {business_ctx or "No hay texto adicional configurado; infiere del tipo de negocio y los datos siguientes."}
 
 Ayudas con: clientes, agenda, stock, tickets Kanban y automatizaciones.

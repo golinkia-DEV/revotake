@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     store_types,
     stores,
     internal,
+    notifications,
     scheduling_admin,
     scheduling_staff,
     scheduling_public,
@@ -56,6 +57,7 @@ api_router.include_router(forms.router, prefix="/forms", tags=["forms"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(internal.router, prefix="/internal", tags=["internal"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(scheduling_admin.router, prefix="/scheduling", tags=["scheduling"])
 api_router.include_router(scheduling_staff.router, prefix="/scheduling", tags=["scheduling-staff"])
 api_router.include_router(scheduling_public.router, prefix="/public/scheduling", tags=["scheduling-public"])

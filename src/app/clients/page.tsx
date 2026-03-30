@@ -5,7 +5,7 @@ import { Plus, Search, Mail, Phone, Trash2, User, CalendarDays, Pencil, X } from
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { toast } from "sonner";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface ClientItem {
   id: string;
@@ -23,13 +23,19 @@ const EMPTY_FORM = { name: "", email: "", phone: "", address: "", notes: "", nex
 export default function ClientsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
   const { data } = useQuery({
-    queryKey: ["clients", search],
-    queryFn: () => api.get(`/clients/?search=${search}&limit=100`).then((r) => r.data),
+    queryKey: ["clients", debouncedSearch],
+    queryFn: () => api.get(`/clients/?search=${encodeURIComponent(debouncedSearch)}&limit=100`).then((r) => r.data),
   });
 
   function openCreate() {
