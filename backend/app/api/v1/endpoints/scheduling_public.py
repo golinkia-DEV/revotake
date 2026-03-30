@@ -52,10 +52,18 @@ async def public_meta(store_slug: str, db: AsyncSession = Depends(get_db)):
         am = sp.get("amenities") if isinstance(sp.get("amenities"), dict) else {}
         if loc or hor or am:
             public_block = {"location_public": loc, "horarios": hor, "amenities": am}
+    logo_url = None
+    st = store.settings if isinstance(store.settings, dict) else {}
+    sp = st.get("store_profile") if isinstance(st.get("store_profile"), dict) else {}
+    br = sp.get("branding") if isinstance(sp.get("branding"), dict) else {}
+    if isinstance(br.get("logo_url"), str) and br["logo_url"].strip():
+        logo_url = br["logo_url"].strip()
+
     return {
         "store_id": store.id,
         "name": store.name,
         "slug": store.slug,
+        "logo_url": logo_url,
         "public": public_block,
     }
 
@@ -85,6 +93,7 @@ async def public_services(store_slug: str, db: AsyncSession = Depends(get_db)):
                 "cancellation_hours": s.cancellation_hours,
                 "cancellation_fee_cents": s.cancellation_fee_cents,
                 "intake_form_schema": s.intake_form_schema or [],
+                "image_urls": list(s.image_urls) if isinstance(s.image_urls, list) else [],
             }
             for s in items
         ]

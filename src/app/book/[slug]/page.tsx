@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
+import { fileUrl } from "@/lib/files";
 import Link from "next/link";
 import { listSelectedAmenityEntries, mergeStoreProfileFromApi } from "@/lib/storeProfile";
 import { AMENITY_ICONS } from "@/lib/amenityIcons";
@@ -37,6 +38,7 @@ type ServiceItem = {
   name: string;
   category?: string | null;
   menu_sort_order?: number;
+  image_urls?: string[];
   description?: string;
   duration_minutes: number;
   price_cents: number;
@@ -347,9 +349,15 @@ export default function PublicBookPage() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
       <div className="mx-auto max-w-lg px-4 py-12">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/30">
-            <Calendar className="h-7 w-7" />
-          </div>
+          {meta.data?.logo_url ? (
+            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md dark:border-slate-700 dark:bg-slate-900">
+              <img src={fileUrl(meta.data.logo_url)} alt="" className="max-h-full max-w-full object-contain p-1" />
+            </div>
+          ) : (
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-600/30">
+              <Calendar className="h-7 w-7" />
+            </div>
+          )}
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
             {meta.data?.name ?? "Reservar"}
           </h1>
@@ -486,10 +494,19 @@ export default function PublicBookPage() {
                             className="flex w-full flex-col gap-1 px-4 py-3 text-left text-sm transition hover:bg-blue-50/80 dark:hover:bg-slate-800/80"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-slate-900 dark:text-slate-100">
-                                {s.name}{" "}
-                                <span className="font-normal text-slate-400">({s.duration_minutes} min)</span>
-                              </span>
+                              <div className="flex min-w-0 items-center gap-3">
+                                {s.image_urls?.[0] && (
+                                  <img
+                                    src={fileUrl(s.image_urls[0])}
+                                    alt=""
+                                    className="h-12 w-12 shrink-0 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-600"
+                                  />
+                                )}
+                                <span className="font-medium text-slate-900 dark:text-slate-100">
+                                  {s.name}{" "}
+                                  <span className="font-normal text-slate-400">({s.duration_minutes} min)</span>
+                                </span>
+                              </div>
                               <span className="shrink-0 font-semibold text-blue-700 dark:text-blue-400">
                                 {formatPrice(s.price_cents, s.currency)}
                               </span>

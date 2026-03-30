@@ -122,12 +122,18 @@ export function listSelectedAmenityEntries(value: Amenities): { key: AmenityTogg
   return entries;
 }
 
+export interface StoreBranding {
+  logo_url: string;
+}
+
 export interface StoreProfile {
   fiscal_chile: FiscalChile;
   location_public: LocationPublic;
   horarios: HorariosTienda;
   amenities: Amenities;
   profile_version: number;
+  /** Marca: logotipo en reserva pública y menú */
+  branding?: StoreBranding;
 }
 
 export const emptyFiscalChile = (): FiscalChile => ({
@@ -191,6 +197,7 @@ export const emptyStoreProfile = (): StoreProfile => ({
   horarios: emptyHorarios(),
   amenities: emptyAmenities(),
   profile_version: 1,
+  branding: { logo_url: "" },
 });
 
 /** Para la API pública: sin datos tributarios. */
@@ -211,8 +218,12 @@ export function mergeStoreProfileFromApi(raw: unknown): StoreProfile {
   const lp = (r.location_public as Record<string, string>) || {};
   const ho = (r.horarios as Record<string, string>) || {};
   const am = (r.amenities as Record<string, unknown>) || {};
+  const br = (r.branding as Record<string, unknown>) || {};
   return {
     profile_version: typeof r.profile_version === "number" ? r.profile_version : 1,
+    branding: {
+      logo_url: typeof br.logo_url === "string" ? br.logo_url : e.branding?.logo_url ?? "",
+    },
     fiscal_chile: { ...e.fiscal_chile, ...fc },
     location_public: { ...e.location_public, ...lp },
     horarios: { ...e.horarios, ...ho },

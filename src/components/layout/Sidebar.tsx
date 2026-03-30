@@ -41,7 +41,7 @@ export default function Sidebar() {
         </div>
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">RevoTake</h1>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Enterprise Suite</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Belleza & bienestar</p>
         </div>
       </div>
       <div className="px-1 pb-2">

@@ -30,6 +30,8 @@ services:
       REDIS_URL: redis://redis:6379/0
     ports:
       - "8002:8000"
+    volumes:
+      - revotake_uploads:/app/uploads
     depends_on:
       - postgres
       - redis
@@ -39,6 +41,7 @@ services:
 
 volumes:
   postgres_data:
+  revotake_uploads:
 
 networks:
   revotake_net:

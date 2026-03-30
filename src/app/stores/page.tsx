@@ -18,6 +18,7 @@ import {
   Info,
   Users,
   FileSpreadsheet,
+  ImageIcon,
 } from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
@@ -32,6 +33,7 @@ import {
   type StoreProfile,
 } from "@/lib/storeProfile";
 import { FiscalChileStep, LocationAndHoursStep, AmenitiesStep } from "@/components/store/StoreProfileWizardSections";
+import { fileUrl } from "@/lib/files";
 
 interface StoreTypeItem {
   id: string;
@@ -280,7 +282,10 @@ export default function StoresPage() {
 
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-on-surface mb-2">Tiendas</h1>
-          <p className="text-slate-500">Cada tienda tiene su propia agenda, stock, clientes e IA.</p>
+          <p className="text-slate-500">
+            Enfocado en belleza, salud y citas: estética, peluquería, barbería, spa, clínicas, gimnasio y más. Cada local
+            tiene su agenda, menú de servicios con fotos, logotipo en reservas y asistente IA.
+          </p>
         </div>
         <button
           type="button"
@@ -334,7 +339,8 @@ export default function StoresPage() {
           {wizardStep === 1 && (
             <div className="space-y-4">
               <p className="text-sm text-slate-600">
-                Primero el nombre y el rubro. La plantilla ajusta sugerencias de IA, agenda y stock según el tipo de negocio.
+                Nombre del local y rubro (estética, barbería, spa, salud, deporte…). La plantilla ajusta IA y duración típica
+                de cita.
               </p>
               <input value={name} onChange={(e) => setName(e.target.value)} className="input-field" placeholder="Nombre de la tienda *" />
               <div>
@@ -731,9 +737,56 @@ export default function StoresPage() {
             Configuración: {configStore.name}
           </h2>
           <p className="text-sm text-slate-500 mb-6">
-            Datos tributarios, ubicación para clientes, horarios, comodidades, tablero de operaciones e IA.
+            Logotipo en la página pública de reservas, datos del local, horarios, comodidades, operaciones e IA.
           </p>
           <div className="space-y-8">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-800/40">
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-on-surface">
+                <ImageIcon className="h-4 w-4 text-primary" /> Logotipo del local
+              </h3>
+              <p className="mb-3 text-xs text-slate-500">Aparece arriba en el link de reserva pública (/book/tu-slug). JPG, PNG o WebP (máx. 5 MB).</p>
+              <div className="flex flex-wrap items-center gap-4">
+                {profileConfig.branding?.logo_url ? (
+                  <img
+                    src={fileUrl(profileConfig.branding.logo_url)}
+                    alt="Logo"
+                    className="h-20 w-20 rounded-xl border border-slate-200 object-contain bg-white p-1 dark:border-slate-600"
+                  />
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-xl border border-dashed border-slate-300 text-xs text-slate-400 dark:border-slate-600">
+                    Sin logo
+                  </div>
+                )}
+                <label className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="sr-only"
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!f || !configStore) return;
+                      try {
+                        const fd = new FormData();
+                        fd.append("file", f);
+                        const r = await api.post("/uploads/store-logo", fd, {
+                          headers: { "X-Store-Id": configStore.id },
+                        });
+                        setProfileConfig((p) => ({
+                          ...p,
+                          branding: { logo_url: (r.data as { url: string }).url },
+                        }));
+                        qc.invalidateQueries({ queryKey: ["my-stores"] });
+                        toast.success("Logotipo actualizado");
+                      } catch {
+                        toast.error("No se pudo subir el logo");
+                      }
+                    }}
+                  />
+                  Subir logo
+                </label>
+              </div>
+            </div>
             <div className="space-y-4 border-b border-slate-200 pb-8">
               <h3 className="text-sm font-semibold text-on-surface">Perfil de tienda (SII, local, horarios, comodidades)</h3>
               <p className="text-xs text-slate-500">

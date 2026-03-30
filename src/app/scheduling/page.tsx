@@ -38,7 +38,8 @@ export default function SchedulingAdminPage() {
         <div>
           <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Agenda avanzada</h1>
           <p className="max-w-xl text-sm text-slate-500">
-            Sucursales, profesionales, servicios, disponibilidad y reservas públicas. Métricas y export CSV desde la API.
+            Citas para belleza, salud y bienestar: sucursales, profesionales, menú de servicios con fotos, disponibilidad y
+            reserva pública. Métricas y export CSV desde la API.
           </p>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-primary">
             <Link href="/scheduling/services" className="hover:underline">

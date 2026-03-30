@@ -20,6 +20,7 @@ from sqlalchemy import select, text
 from datetime import time
 
 from app.core.config import settings
+from app.db.store_type_seeds import store_type_seeds_for_wellness
 
 DEFAULT_SETTINGS = {
     "ai": {"business_context": "", "tone": "professional"},
@@ -300,229 +301,7 @@ def _s(ctx: str, duration: int = 30) -> dict:
     }
 
 
-STORE_TYPE_SEEDS = [
-    # ── Comercio ───────────────────────────────────────────────────────────────
-    {
-        "name": "Comercio minorista",
-        "slug": "retail",
-        "description": "Tienda física u online con catálogo y stock.",
-        "icon": "shopping-bag",
-        "default_settings": _s("Venta de productos con inventario y posible envío. Gestión de stock, ventas y clientes."),
-    },
-    {
-        "name": "Mayorista / distribuidor",
-        "slug": "wholesale",
-        "description": "Venta al por mayor, pedidos B2B y gestión de inventario masivo.",
-        "icon": "warehouse",
-        "default_settings": _s("Distribución y venta mayorista. Pedidos B2B, gestión de stock masivo y clientes empresariales."),
-    },
-    # ── Gastronomía ────────────────────────────────────────────────────────────
-    {
-        "name": "Restaurante / delivery",
-        "slug": "food",
-        "description": "Pedidos, incidencias y relación con clientes.",
-        "icon": "utensils",
-        "default_settings": _s("Restaurante u operación de comida: pedidos, reservas de mesa y reclamos."),
-    },
-    {
-        "name": "Cafetería / pastelería",
-        "slug": "cafe",
-        "description": "Atención de local, delivery y productos artesanales.",
-        "icon": "coffee",
-        "default_settings": _s("Cafetería o pastelería: productos del día, reservas de mesa y pedidos online."),
-    },
-    {
-        "name": "Catering y eventos gastronómicos",
-        "slug": "catering",
-        "description": "Cotizaciones, menús y coordinación de eventos de comida.",
-        "icon": "chef-hat",
-        "default_settings": _s("Catering para eventos: cotizaciones de menú, coordinación logística y seguimiento de clientes.", 60),
-    },
-    # ── Salud y bienestar ──────────────────────────────────────────────────────
-    {
-        "name": "Salud y belleza",
-        "slug": "beauty",
-        "description": "Agenda de citas, fichas de clientes y consumibles.",
-        "icon": "sparkles",
-        "default_settings": _s("Salón, clínica estética o spa: citas, historial y productos de uso frecuente.", 45),
-    },
-    {
-        "name": "Peluquería / barbería",
-        "slug": "barbershop",
-        "description": "Citas de corte y color, control de productos y fidelización.",
-        "icon": "scissors",
-        "default_settings": _s("Peluquería o barbería: citas de corte, coloración y tratamientos. Control de consumibles y clientes recurrentes.", 40),
-    },
-    {
-        "name": "Odontología / clínica dental",
-        "slug": "dental",
-        "description": "Agenda de tratamientos, fichas clínicas y presupuestos.",
-        "icon": "tooth",
-        "default_settings": _s("Clínica dental: agenda de tratamientos (limpiezas, ortodoncia, implantes), fichas del paciente y presupuestos.", 60),
-    },
-    {
-        "name": "Psicología / salud mental",
-        "slug": "psychology",
-        "description": "Sesiones de terapia, seguimiento de pacientes y notas clínicas.",
-        "icon": "brain",
-        "default_settings": _s("Consulta de psicología o terapia: sesiones individuales, seguimiento del paciente y coordinación de horarios.", 50),
-    },
-    {
-        "name": "Kinesiología / fisioterapia",
-        "slug": "physiotherapy",
-        "description": "Rehabilitación, evaluaciones y control de progreso.",
-        "icon": "activity",
-        "default_settings": _s("Centro de kinesiología: sesiones de rehabilitación, evaluaciones iniciales y seguimiento del progreso del paciente.", 45),
-    },
-    {
-        "name": "Nutrición / dietética",
-        "slug": "nutrition",
-        "description": "Consultas, planes alimenticios y control de evolución.",
-        "icon": "apple",
-        "default_settings": _s("Consulta de nutrición: evaluaciones, planes alimenticios personalizados y seguimiento de peso/evolución.", 45),
-    },
-    # ── Fitness y deporte ──────────────────────────────────────────────────────
-    {
-        "name": "Gimnasio y fitness",
-        "slug": "fitness",
-        "description": "Membresías, clases grupales y entrenamiento personal.",
-        "icon": "dumbbell",
-        "default_settings": _s("Gimnasio o centro de fitness: membresías, clases grupales (yoga, pilates, spinning), entrenamiento personal y control de asistencia.", 60),
-    },
-    {
-        "name": "Entrenador personal",
-        "slug": "personal-trainer",
-        "description": "Sesiones de entrenamiento, planes y seguimiento de progreso.",
-        "icon": "zap",
-        "default_settings": _s("Entrenador personal: sesiones de entrenamiento a domicilio o en gimnasio, planes de ejercicio y seguimiento de resultados.", 60),
-    },
-    # ── Educación ──────────────────────────────────────────────────────────────
-    {
-        "name": "Educación y clases particulares",
-        "slug": "education",
-        "description": "Clases, talleres y academia de idiomas o habilidades.",
-        "icon": "graduation-cap",
-        "default_settings": _s("Academia o clases particulares: agenda de sesiones, seguimiento del alumno, cobranza mensual y material de apoyo.", 60),
-    },
-    {
-        "name": "Centro de idiomas",
-        "slug": "languages",
-        "description": "Cursos de idiomas, niveles y seguimiento de alumnos.",
-        "icon": "languages",
-        "default_settings": _s("Centro de idiomas: cursos presenciales u online, niveles (A1–C2), matrícula, seguimiento de progreso y certificaciones.", 60),
-    },
-    # ── Servicios profesionales ────────────────────────────────────────────────
-    {
-        "name": "Servicios y consultoría",
-        "slug": "services",
-        "description": "Citas, proyectos y seguimiento de clientes B2B.",
-        "icon": "briefcase",
-        "default_settings": _s("Prestación de servicios profesionales: propuestas, proyectos, reuniones y seguimiento de clientes B2B."),
-    },
-    {
-        "name": "Abogados / estudio jurídico",
-        "slug": "legal",
-        "description": "Gestión de casos, clientes y citas de asesoría legal.",
-        "icon": "scale",
-        "default_settings": _s("Estudio jurídico: agenda de consultas, seguimiento de casos, gestión de clientes y plazos legales.", 45),
-    },
-    {
-        "name": "Contabilidad / finanzas",
-        "slug": "accounting",
-        "description": "Gestión de clientes contables, plazos y documentos.",
-        "icon": "calculator",
-        "default_settings": _s("Estudio contable o financiero: gestión de clientes, plazos tributarios, declaraciones y reuniones de asesoría.", 45),
-    },
-    {
-        "name": "Arquitectura / diseño",
-        "slug": "architecture",
-        "description": "Proyectos, presupuestos y reuniones con clientes.",
-        "icon": "pen-tool",
-        "default_settings": _s("Estudio de arquitectura o diseño: proyectos, reuniones de avance, cotizaciones y seguimiento con clientes.", 60),
-    },
-    {
-        "name": "Marketing / agencia digital",
-        "slug": "marketing",
-        "description": "Clientes, campañas, reuniones y reportes.",
-        "icon": "trending-up",
-        "default_settings": _s("Agencia de marketing o publicidad: gestión de clientes, campañas digitales, reportes mensuales y reuniones de avance."),
-    },
-    # ── Hogar y servicios técnicos ─────────────────────────────────────────────
-    {
-        "name": "Servicios del hogar",
-        "slug": "home-services",
-        "description": "Electricidad, gasfitería, climatización y reparaciones.",
-        "icon": "tool",
-        "default_settings": _s("Servicios del hogar: electricidad, gasfitería, pintura, plomería. Gestión de visitas técnicas, presupuestos y cobros."),
-    },
-    {
-        "name": "Taller mecánico / automotriz",
-        "slug": "automotive",
-        "description": "Recepción de vehículos, presupuestos y seguimiento de reparaciones.",
-        "icon": "car",
-        "default_settings": _s("Taller mecánico: recepción de vehículos, diagnóstico, presupuestos, seguimiento de reparación y entrega.", 60),
-    },
-    {
-        "name": "Taller de tecnología / electrónica",
-        "slug": "tech-repair",
-        "description": "Reparación de dispositivos, seguimiento de órdenes y garantías.",
-        "icon": "smartphone",
-        "default_settings": _s("Taller de reparación de celulares, computadores y electrónica: órdenes de trabajo, diagnóstico, presupuesto y entrega."),
-    },
-    # ── Inmobiliaria y viajes ──────────────────────────────────────────────────
-    {
-        "name": "Inmobiliaria",
-        "slug": "real-estate",
-        "description": "Propiedades, visitas y seguimiento de clientes compradores/arrendatarios.",
-        "icon": "home",
-        "default_settings": _s("Inmobiliaria: gestión de propiedades en venta y arriendo, agenda de visitas, seguimiento de clientes y cierre de negocios.", 45),
-    },
-    {
-        "name": "Agencia de viajes",
-        "slug": "travel",
-        "description": "Cotizaciones, reservas y seguimiento de viajeros.",
-        "icon": "plane",
-        "default_settings": _s("Agencia de viajes: cotizaciones de paquetes, reservas de vuelos y hoteles, seguimiento de clientes y post-venta.", 30),
-    },
-    # ── Mascotas ───────────────────────────────────────────────────────────────
-    {
-        "name": "Veterinaria",
-        "slug": "veterinary",
-        "description": "Citas, fichas de mascotas y control de productos veterinarios.",
-        "icon": "heart",
-        "default_settings": _s("Clínica veterinaria: citas médicas, fichas de mascotas (historial, vacunas, peso), cirugías y control de medicamentos.", 30),
-    },
-    {
-        "name": "Peluquería canina / grooming",
-        "slug": "grooming",
-        "description": "Baño, corte y cuidado de mascotas por cita.",
-        "icon": "scissors",
-        "default_settings": _s("Servicio de grooming o peluquería canina: citas de baño y corte, ficha de la mascota y recordatorios al dueño.", 60),
-    },
-    # ── Fotografía y creativos ─────────────────────────────────────────────────
-    {
-        "name": "Fotografía / videografía",
-        "slug": "photography",
-        "description": "Sesiones fotográficas, eventos y entrega de material.",
-        "icon": "camera",
-        "default_settings": _s("Estudio fotográfico o videografía: sesiones fotográficas, cobertura de eventos, cotizaciones y entrega de material editado.", 90),
-    },
-    {
-        "name": "Eventos y producción",
-        "slug": "events",
-        "description": "Coordinación de eventos, proveedores y logística.",
-        "icon": "party-popper",
-        "default_settings": _s("Empresa de eventos: cotizaciones, coordinación de proveedores (sonido, catering, decoración), seguimiento y post-evento.", 60),
-    },
-    # ── Genérico ───────────────────────────────────────────────────────────────
-    {
-        "name": "Genérico",
-        "slug": "generic",
-        "description": "Plantilla neutra adaptable a cualquier negocio.",
-        "icon": "layout-grid",
-        "default_settings": DEFAULT_SETTINGS,
-    },
-]
+STORE_TYPE_SEEDS = store_type_seeds_for_wellness(_s)
 
 async def _migrate_agenda_features():
     """Nuevas columnas de agenda: política cancelación, depósito, re-agendamiento, intake, descripción."""
@@ -569,6 +348,21 @@ async def _migrate_service_menu_category():
                 await conn.execute(text(sql))
         except Exception as e:
             print(f"Aviso migración service_menu_category ({sql[:50]}…):", e)
+
+
+async def _migrate_service_images():
+    """Galería de imágenes por servicio (JSON array de URLs)."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "ALTER TABLE scheduling_services ADD COLUMN IF NOT EXISTS image_urls JSONB DEFAULT '[]'::jsonb;"
+                )
+            )
+    except Exception as e:
+        print("Aviso migración service_images:", e)
 
 
 async def _migrate_scheduling_operations_extensions():
@@ -619,6 +413,10 @@ async def init_db():
         await _migrate_service_menu_category()
     except Exception as e:
         print("Aviso migración service menu category:", e)
+    try:
+        await _migrate_service_images()
+    except Exception as e:
+        print("Aviso migración service images:", e)
     try:
         await _migrate_scheduling_operations_extensions()
     except Exception as e:

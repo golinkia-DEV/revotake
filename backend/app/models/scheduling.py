@@ -134,6 +134,8 @@ class Service(Base):
     suggest_rebooking_days: Mapped[int] = mapped_column(Integer, default=0)
     # Esquema de preguntas de intake (JSON array de campos)
     intake_form_schema: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Hasta 5 URLs públicas de fotos del servicio (galería en reserva / menú)
+    image_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 

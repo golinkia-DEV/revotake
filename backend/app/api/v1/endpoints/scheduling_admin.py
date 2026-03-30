@@ -6,7 +6,7 @@ from datetime import date, datetime, time, timedelta
 from typing import Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from sqlalchemy import select, func, delete, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -218,6 +218,14 @@ class ServiceCreate(BaseModel):
     deposit_required_cents: int = 0
     suggest_rebooking_days: int = 0
     intake_form_schema: Optional[list] = None
+    image_urls: Optional[list[str]] = None
+
+    @field_validator("image_urls")
+    @classmethod
+    def _validate_image_urls_create(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is not None and len(v) > 5:
+            raise ValueError("Máximo 5 imágenes por servicio")
+        return v
 
 
 @router.get("/services")
@@ -252,6 +260,7 @@ async def list_services(
                 "deposit_required_cents": s.deposit_required_cents,
                 "suggest_rebooking_days": s.suggest_rebooking_days,
                 "intake_form_schema": s.intake_form_schema or [],
+                "image_urls": list(s.image_urls) if isinstance(s.image_urls, list) else [],
                 "is_active": s.is_active,
             }
             for s in rows
@@ -291,6 +300,7 @@ async def create_service(
         deposit_required_cents=data.deposit_required_cents,
         suggest_rebooking_days=data.suggest_rebooking_days,
         intake_form_schema=data.intake_form_schema,
+        image_urls=list(data.image_urls)[:5] if data.image_urls else [],
     )
     db.add(s)
     await db.flush()
@@ -316,7 +326,15 @@ class ServicePatch(BaseModel):
     deposit_required_cents: Optional[int] = None
     suggest_rebooking_days: Optional[int] = None
     intake_form_schema: Optional[list] = None
+    image_urls: Optional[list[str]] = None
     is_active: Optional[bool] = None
+
+    @field_validator("image_urls")
+    @classmethod
+    def _validate_image_urls_patch(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is not None and len(v) > 5:
+            raise ValueError("Máximo 5 imágenes por servicio")
+        return v
 
 
 @router.patch("/services/{service_id}")
