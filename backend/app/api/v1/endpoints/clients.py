@@ -13,9 +13,17 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import StoreContext, require_store
 from app.models.client import Client
+from app.models.meeting import Meeting
+from app.models.product import Product
+from app.models.purchase import Purchase
+from app.models.scheduling import Appointment, Branch, Professional, Service
+from app.models.ticket import Ticket
 from app.models.user import User
 
 router = APIRouter()
+
+_ACTIVITY_LIMIT_PER_KIND = 120
+_ACTIVITY_MERGED_LIMIT = 250
 
 MAX_IMPORT_CHARS = 400_000
 MAX_CLIENTS_AI_IMPORT = 120
@@ -215,6 +223,130 @@ async def get_client(client_id: str, db: AsyncSession = Depends(get_db), current
     if not client:
         raise HTTPException(404, "Client not found")
     return {"id": client.id, "name": client.name, "email": client.email, "phone": client.phone, "address": client.address, "notes": client.notes, "preferences": client.preferences, "custom_fields": client.custom_fields, "created_at": client.created_at}
+
+
+@router.get("/{client_id}/activity")
+async def get_client_activity(
+    client_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store),
+):
+    """Historial unificado: citas/reservas (con profesional aunque esté inactivo), compras, tickets y reuniones."""
+    result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(404, "Client not found")
+
+    sid = ctx.store_id
+    events: list[dict[str, Any]] = []
+
+    appt_rows = await db.execute(
+        select(Appointment, Service.name, Professional.name, Professional.is_active, Branch.name)
+        .join(Service, Service.id == Appointment.service_id)
+        .join(Professional, Professional.id == Appointment.professional_id)
+        .join(Branch, Branch.id == Appointment.branch_id)
+        .where(Appointment.client_id == client_id, Appointment.store_id == sid)
+        .order_by(Appointment.start_time.desc())
+        .limit(_ACTIVITY_LIMIT_PER_KIND)
+    )
+    for a, svc_name, prof_name, prof_active, branch_name in appt_rows.all():
+        events.append(
+            {
+                "kind": "appointment",
+                "at": a.start_time.isoformat(),
+                "id": a.id,
+                "service_name": svc_name,
+                "professional_id": a.professional_id,
+                "professional_name": prof_name,
+                "professional_is_active": bool(prof_active),
+                "branch_name": branch_name,
+                "status": a.status,
+                "start_time": a.start_time.isoformat(),
+                "end_time": a.end_time.isoformat(),
+                "payment_status": a.payment_status,
+                "charged_price_cents": a.charged_price_cents,
+            }
+        )
+
+    pur_rows = await db.execute(
+        select(Purchase, Product.name)
+        .join(Product, Product.id == Purchase.product_id)
+        .where(Purchase.client_id == client_id, Purchase.store_id == sid)
+        .order_by(Purchase.sold_at.desc())
+        .limit(_ACTIVITY_LIMIT_PER_KIND)
+    )
+    for p, product_name in pur_rows.all():
+        events.append(
+            {
+                "kind": "purchase",
+                "at": p.sold_at.isoformat(),
+                "id": p.id,
+                "product_name": product_name,
+                "quantity": p.quantity,
+                "unit_price": p.unit_price,
+                "total": p.total,
+            }
+        )
+
+    tick_rows = await db.execute(
+        select(Ticket)
+        .where(Ticket.client_id == client_id, Ticket.store_id == sid)
+        .order_by(Ticket.updated_at.desc())
+        .limit(_ACTIVITY_LIMIT_PER_KIND)
+    )
+    for t in tick_rows.scalars().all():
+        events.append(
+            {
+                "kind": "ticket",
+                "at": t.updated_at.isoformat(),
+                "id": t.id,
+                "title": t.title,
+                "ticket_type": t.type.value if hasattr(t.type, "value") else str(t.type),
+                "status": t.status.value if hasattr(t.status, "value") else str(t.status),
+                "created_at": t.created_at.isoformat(),
+            }
+        )
+
+    meet_rows = await db.execute(
+        select(Meeting, User.name)
+        .join(User, User.id == Meeting.organizer_id)
+        .where(Meeting.client_id == client_id, Meeting.store_id == sid)
+        .order_by(Meeting.start_time.desc())
+        .limit(_ACTIVITY_LIMIT_PER_KIND)
+    )
+    for m, organizer_name in meet_rows.all():
+        events.append(
+            {
+                "kind": "meeting",
+                "at": m.start_time.isoformat(),
+                "id": m.id,
+                "title": m.title,
+                "organizer_name": organizer_name,
+                "confirmation_status": m.confirmation_status,
+                "start_time": m.start_time.isoformat(),
+                "end_time": m.end_time.isoformat(),
+            }
+        )
+
+    events.sort(key=lambda e: e["at"], reverse=True)
+    events = events[:_ACTIVITY_MERGED_LIMIT]
+
+    return {
+        "client": {
+            "id": client.id,
+            "name": client.name,
+            "email": client.email,
+            "phone": client.phone,
+            "address": client.address,
+            "notes": client.notes,
+            "preferences": client.preferences or {},
+            "custom_fields": client.custom_fields or {},
+            "created_at": client.created_at.isoformat() if client.created_at else None,
+        },
+        "events": events,
+    }
+
 
 @router.put("/{client_id}")
 async def update_client(client_id: str, data: ClientCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):

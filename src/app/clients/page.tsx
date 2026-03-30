@@ -1,7 +1,21 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { motion } from "framer-motion";
-import { Plus, Search, Mail, Phone, Trash2, User, CalendarDays, Pencil, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Plus,
+  Search,
+  Mail,
+  Phone,
+  Trash2,
+  User,
+  CalendarDays,
+  Pencil,
+  X,
+  ShoppingBag,
+  Kanban,
+  Video,
+  Loader2,
+} from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { toast } from "sonner";
@@ -18,6 +32,89 @@ interface ClientItem {
   preferences?: Record<string, unknown>;
 }
 
+type ActivityEvent =
+  | {
+      kind: "appointment";
+      at: string;
+      id: string;
+      service_name: string;
+      professional_id: string;
+      professional_name: string;
+      professional_is_active: boolean;
+      branch_name: string;
+      status: string;
+      start_time: string;
+      end_time: string;
+      payment_status: string;
+      charged_price_cents: number | null;
+    }
+  | {
+      kind: "purchase";
+      at: string;
+      id: string;
+      product_name: string;
+      quantity: number;
+      unit_price: number;
+      total: number;
+    }
+  | {
+      kind: "ticket";
+      at: string;
+      id: string;
+      title: string;
+      ticket_type: string;
+      status: string;
+      created_at: string;
+    }
+  | {
+      kind: "meeting";
+      at: string;
+      id: string;
+      title: string;
+      organizer_name: string;
+      confirmation_status: string;
+      start_time: string;
+      end_time: string;
+    };
+
+interface ClientActivityResponse {
+  client: ClientItem & { custom_fields?: Record<string, unknown>; created_at: string | null };
+  events: ActivityEvent[];
+}
+
+const APPOINTMENT_STATUS_ES: Record<string, string> = {
+  pending_payment: "Pendiente de pago",
+  confirmed: "Confirmada",
+  cancelled: "Cancelada",
+  completed: "Completada",
+  no_show: "No asistió",
+};
+
+const TICKET_STATUS_ES: Record<string, string> = {
+  new: "Nuevo",
+  qualified: "Calificado",
+  meeting_scheduled: "Reunión agendada",
+  data_received: "Datos recibidos",
+  sold: "Vendido",
+  follow_up: "Seguimiento",
+  no_response: "Sin respuesta",
+  closed: "Cerrado",
+};
+
+const TICKET_TYPE_ES: Record<string, string> = {
+  lead: "Lead",
+  meeting: "Reunión",
+  order: "Pedido",
+  incident: "Incidencia",
+  task: "Tarea",
+};
+
+function formatMoneyCl(value: number) {
+  return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(
+    Math.round(value),
+  );
+}
+
 const EMPTY_FORM = { name: "", email: "", phone: "", address: "", notes: "", next_contact_date: "" };
 
 export default function ClientsPage() {
@@ -25,6 +122,7 @@ export default function ClientsPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [detailClientId, setDetailClientId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -36,6 +134,12 @@ export default function ClientsPage() {
   const { data } = useQuery({
     queryKey: ["clients", debouncedSearch],
     queryFn: () => api.get(`/clients/?search=${encodeURIComponent(debouncedSearch)}&limit=100`).then((r) => r.data),
+  });
+
+  const { data: activityData, isLoading: activityLoading } = useQuery({
+    queryKey: ["client-activity", detailClientId],
+    queryFn: () => api.get<ClientActivityResponse>(`/clients/${detailClientId}/activity`).then((r) => r.data),
+    enabled: Boolean(detailClientId),
   });
 
   function openCreate() {
@@ -63,6 +167,30 @@ export default function ClientsPage() {
     setForm(EMPTY_FORM);
   }
 
+  function openDetail(clientId: string) {
+    setDetailClientId(clientId);
+  }
+
+  function closeDetail() {
+    setDetailClientId(null);
+  }
+
+  function openEditFromDetail() {
+    const c = activityData?.client;
+    if (!c) return;
+    closeDetail();
+    openEdit({
+      id: c.id,
+      name: c.name,
+      email: c.email,
+      phone: c.phone,
+      address: c.address ?? null,
+      notes: c.notes ?? null,
+      created_at: c.created_at ?? "",
+      preferences: c.preferences,
+    });
+  }
+
   const create = useMutation({
     mutationFn: (d: typeof form) => {
       const { next_contact_date, ...rest } = d;
@@ -86,6 +214,7 @@ export default function ClientsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["clients"] });
+      if (editingId) qc.invalidateQueries({ queryKey: ["client-activity", editingId] });
       closeForm();
       toast.success("Cliente actualizado");
     },
@@ -93,13 +222,24 @@ export default function ClientsPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/clients/${id}`),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       qc.invalidateQueries({ queryKey: ["clients"] });
+      qc.removeQueries({ queryKey: ["client-activity", id] });
+      if (detailClientId === id) closeDetail();
       toast.success("Cliente eliminado");
     },
   });
 
   const isPending = create.isPending || update.isPending;
+
+  useEffect(() => {
+    if (!detailClientId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeDetail();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailClientId]);
 
   return (
     <AppLayout>
@@ -109,8 +249,8 @@ export default function ClientsPage() {
           <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">Clientes</h1>
           <p className="mt-1 text-slate-500">{data?.total ?? 0} clientes registrados</p>
           <p className="mt-2 max-w-xl text-sm text-slate-600">
-            Alta sencilla: nombre obligatorio; el resto es opcional. Usa el <strong>calendario</strong> para anotar cuándo quieres volver a contactar a la
-            persona (se guarda como recordatorio en su ficha).
+            Alta sencilla: nombre obligatorio; el resto es opcional. Tocá una tarjeta para ver el <strong>historial</strong> en la tienda (reservas, compras,
+            tickets y reuniones) y el profesional que atendió cada cita — aunque esté desactivado, el nombre se conserva en el registro.
           </p>
         </div>
         <button type="button" onClick={openCreate} className="btn-primary self-start">
@@ -201,7 +341,21 @@ export default function ClientsPage() {
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data?.items?.map((client: ClientItem) => (
-          <motion.div key={client.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card-hover p-5">
+          <motion.div
+            key={client.id}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            role="button"
+            tabIndex={0}
+            onClick={() => openDetail(client.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openDetail(client.id);
+              }
+            }}
+            className="glass-card-hover cursor-pointer p-5 text-left outline-none ring-primary/40 transition-shadow focus-visible:ring-2"
+          >
             <div className="mb-3 flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -215,14 +369,20 @@ export default function ClientsPage() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => openEdit(client)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEdit(client);
+                  }}
                   className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => remove.mutate(client.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    remove.mutate(client.id);
+                  }}
                   className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -250,6 +410,187 @@ export default function ClientsPage() {
           </motion.div>
         ))}
       </div>
+
+      <AnimatePresence>
+        {detailClientId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-4 sm:items-center"
+            role="presentation"
+            onClick={closeDetail}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 24 }}
+              transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              className="glass-card max-h-[min(90vh,720px)] w-full max-w-lg overflow-hidden shadow-2xl"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="client-sheet-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex max-h-[min(90vh,720px)] flex-col">
+                <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200/80 p-5">
+                  <div className="min-w-0">
+                    {activityLoading ? (
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span className="text-sm">Cargando ficha…</span>
+                      </div>
+                    ) : (
+                      <>
+                        <h2 id="client-sheet-title" className="truncate text-lg font-bold text-on-surface">
+                          {activityData?.client.name ?? "Cliente"}
+                        </h2>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Historial en esta tienda · profesionales aunque estén inactivos
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeDetail}
+                    className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    aria-label="Cerrar"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto p-5">
+                  {!activityLoading && activityData && (
+                    <>
+                      <div className="mb-6 space-y-2 text-sm">
+                        {activityData.client.email && (
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+                            {activityData.client.email}
+                          </div>
+                        )}
+                        {activityData.client.phone && (
+                          <div className="flex items-center gap-2 text-slate-600">
+                            <Phone className="h-4 w-4 shrink-0 text-slate-400" />
+                            {activityData.client.phone}
+                          </div>
+                        )}
+                        {activityData.client.address && (
+                          <p className="text-slate-600">{activityData.client.address}</p>
+                        )}
+                        {activityData.client.notes && (
+                          <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">{activityData.client.notes}</p>
+                        )}
+                        <button type="button" onClick={openEditFromDetail} className="btn-ghost mt-2 text-sm">
+                          <Pencil className="mr-1.5 inline h-4 w-4" />
+                          Editar datos del cliente
+                        </button>
+                      </div>
+
+                      <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">Actividad</p>
+                      {activityData.events.length === 0 ? (
+                        <p className="text-sm text-slate-500">Aún no hay reservas, compras ni otros registros vinculados a este cliente.</p>
+                      ) : (
+                        <ul className="space-y-3">
+                          {activityData.events.map((ev) => (
+                            <li
+                              key={`${ev.kind}-${ev.id}`}
+                              className="flex gap-3 rounded-xl border border-slate-200/80 bg-white/60 p-3 text-sm shadow-sm"
+                            >
+                              {ev.kind === "appointment" && (
+                                <>
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+                                    <CalendarDays className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-on-surface">{ev.service_name}</p>
+                                    <p className="text-slate-600">
+                                      {ev.professional_name}
+                                      {!ev.professional_is_active && (
+                                        <span className="ml-1.5 text-xs font-normal text-amber-700">(inactivo en agenda)</span>
+                                      )}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {new Date(ev.start_time).toLocaleString("es-CL", {
+                                        dateStyle: "medium",
+                                        timeStyle: "short",
+                                      })}
+                                      {ev.branch_name ? ` · ${ev.branch_name}` : ""}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      Estado: {APPOINTMENT_STATUS_ES[ev.status] ?? ev.status}
+                                      {ev.charged_price_cents != null && ev.charged_price_cents > 0
+                                        ? ` · Cobrado: ${formatMoneyCl(ev.charged_price_cents)}`
+                                        : ""}
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                              {ev.kind === "purchase" && (
+                                <>
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                                    <ShoppingBag className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-on-surface">{ev.product_name}</p>
+                                    <p className="text-slate-600">
+                                      {ev.quantity} × {formatMoneyCl(ev.unit_price)} · Total {formatMoneyCl(ev.total)}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {new Date(ev.at).toLocaleString("es-CL", { dateStyle: "medium", timeStyle: "short" })}
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                              {ev.kind === "ticket" && (
+                                <>
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700">
+                                    <Kanban className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-on-surface">{ev.title}</p>
+                                    <p className="text-slate-600">
+                                      {TICKET_TYPE_ES[ev.ticket_type] ?? ev.ticket_type} ·{" "}
+                                      {TICKET_STATUS_ES[ev.status] ?? ev.status}
+                                    </p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      Actualizado{" "}
+                                      {new Date(ev.at).toLocaleString("es-CL", { dateStyle: "medium", timeStyle: "short" })}
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                              {ev.kind === "meeting" && (
+                                <>
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800">
+                                    <Video className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="font-medium text-on-surface">{ev.title}</p>
+                                    <p className="text-slate-600">Organiza: {ev.organizer_name}</p>
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {new Date(ev.start_time).toLocaleString("es-CL", {
+                                        dateStyle: "medium",
+                                        timeStyle: "short",
+                                      })}
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </AppLayout>
   );
 }
