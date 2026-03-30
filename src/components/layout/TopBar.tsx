@@ -66,11 +66,11 @@ export default function TopBar({
   return (
     <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-slate-100 bg-white/80 px-3 backdrop-blur-md sm:h-16 sm:px-6 dark:border-slate-800 dark:bg-slate-900/80">
       <div className="flex items-center gap-2">
-        {/* Hamburger — solo visible en mobile */}
+        {/* Hamburger — visible solo en tablet (sm-md), en mobile lo reemplaza el BottomNav */}
         <button
           type="button"
           onClick={onMenuClick}
-          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-primary md:hidden dark:hover:bg-slate-800"
+          className="hidden h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-primary sm:flex md:hidden dark:hover:bg-slate-800"
           aria-label="Abrir menú"
         >
           <Menu className="h-5 w-5" />

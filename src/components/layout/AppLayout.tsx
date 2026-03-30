@@ -5,6 +5,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { getStoreId } from "@/lib/store";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
+import BottomNav from "./BottomNav";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Send, Loader2, Sparkles, User } from "lucide-react";
 import api from "@/lib/api";
@@ -42,7 +43,7 @@ function HelpChat({ onClose }: { onClose: () => void }) {
       initial={{ opacity: 0, y: 16, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 16, scale: 0.96 }}
-      className="fixed bottom-20 right-4 z-50 flex w-[calc(100vw-32px)] max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:bottom-24 sm:right-6 sm:w-80 dark:border-slate-700 dark:bg-slate-900"
+      className="fixed bottom-36 right-4 z-50 flex w-[calc(100vw-32px)] max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:bottom-24 md:right-6 md:w-80 dark:border-slate-700 dark:bg-slate-900"
     >
       <div className="flex items-center justify-between bg-primary px-4 py-3">
         <div className="flex items-center gap-2 text-white">
@@ -118,14 +119,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-h-screen flex-col md:ml-64">
         <TopBar onMenuClick={() => setSidebarOpen((v) => !v)} />
-        <main className="flex-1 overflow-auto p-4 sm:p-6 md:p-8">{children}</main>
+        {/* pb-16 en mobile para que el contenido no quede tapado por el BottomNav */}
+        <main className="flex-1 overflow-auto p-4 pb-20 sm:p-6 sm:pb-20 md:p-8 md:pb-8">{children}</main>
       </div>
+
+      <BottomNav onMoreClick={() => setSidebarOpen((v) => !v)} />
 
       {/* Botón flotante ayuda */}
       <button
         type="button"
         onClick={() => setShowHelp((v) => !v)}
-        className="fixed bottom-4 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 transition-transform hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6 sm:h-14 sm:w-14"
+        className="fixed bottom-20 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 transition-transform hover:scale-105 active:scale-95 md:bottom-6 md:right-6 md:h-14 md:w-14"
         aria-label="Ayuda"
       >
         <AnimatePresence mode="wait">
