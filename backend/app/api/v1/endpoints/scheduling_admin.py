@@ -180,6 +180,7 @@ class ProfessionalCreate(BaseModel):
     name: str
     email: Optional[str] = None
     branch_ids: list[str] = Field(default_factory=list)
+    service_ids: list[str] = Field(default_factory=list)
 
 
 @router.get("/professionals")
@@ -231,6 +232,18 @@ async def create_professional(
                 is_primary=(len(data.branch_ids) == 1 or i == 0),
             )
         )
+    for sid in data.service_ids:
+        sv = await db.get(Service, sid)
+        if not sv or sv.store_id != ctx.store_id:
+            raise HTTPException(400, "Servicio inválido")
+        dup = await db.execute(
+            select(ProfessionalService.id).where(
+                ProfessionalService.professional_id == p.id,
+                ProfessionalService.service_id == sid,
+            )
+        )
+        if dup.scalar_one_or_none() is None:
+            db.add(ProfessionalService(professional_id=p.id, service_id=sv.id))
     return {"id": p.id}
 
 

@@ -28,6 +28,8 @@ type ProfessionalRow = {
   branch_ids: string[];
 };
 
+type ServicePick = { id: string; name: string; category: string | null; menu_sort_order: number; is_active: boolean };
+
 const TZ_OPTIONS = ["America/Santiago", "America/Punta_Arenas", "Pacific/Easter", "UTC"];
 
 export default function SchedulingSedesPage() {
@@ -46,8 +48,15 @@ export default function SchedulingSedesPage() {
     enabled: !!storeId,
   });
 
+  const { data: servicesData } = useQuery({
+    queryKey: ["scheduling-services", storeId],
+    queryFn: () => api.get<{ items: ServicePick[] }>("/scheduling/services").then((r) => r.data),
+    enabled: !!storeId,
+  });
+
   const branches: BranchRow[] = branchesData?.items ?? [];
   const professionals: ProfessionalRow[] = professionalsData?.items ?? [];
+  const activeServices = (servicesData?.items ?? []).filter((s) => s.is_active);
 
   const [newName, setNewName] = useState("");
   const [newRegion, setNewRegion] = useState("");
@@ -85,7 +94,7 @@ export default function SchedulingSedesPage() {
   });
 
   const createProfessional = useMutation({
-    mutationFn: (body: { name: string; email?: string; branch_ids: string[] }) =>
+    mutationFn: (body: { name: string; email?: string; branch_ids: string[]; service_ids: string[] }) =>
       api.post("/scheduling/professionals", body),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduling-professionals"] }),
   });
@@ -100,6 +109,7 @@ export default function SchedulingSedesPage() {
   const [newProName, setNewProName] = useState("");
   const [newProEmail, setNewProEmail] = useState("");
   const [newProBranches, setNewProBranches] = useState<string[]>([]);
+  const [newProServices, setNewProServices] = useState<string[]>([]);
 
   function draftBranches(p: ProfessionalRow): string[] {
     return proDraft[p.id] ?? p.branch_ids;
@@ -237,7 +247,11 @@ export default function SchedulingSedesPage() {
           <Users className="h-5 w-5 text-primary" /> Profesionales y sedes donde atienden
         </div>
         <p className="mb-4 text-xs text-slate-500">
-          Marcá todas las sedes en las que trabaja cada persona. Para vincular a un usuario (Mi agenda), usá la API{" "}
+          Marcá todas las sedes en las que trabaja cada persona. Para dar de alta con selección clara de servicios, usá{" "}
+          <Link href="/scheduling/profesionales" className="font-semibold text-primary hover:underline">
+            Crear profesional
+          </Link>{" "}
+          en el menú. Para vincular a un usuario (Mi agenda), usá la API{" "}
           <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">PATCH /scheduling/professionals/&#123;id&#125;</code>{" "}
           con <code className="rounded bg-slate-100 px-1">user_id</code>.
         </p>
@@ -327,21 +341,54 @@ export default function SchedulingSedesPage() {
               </label>
             ))}
           </div>
+          {activeServices.length > 0 && (
+            <>
+              <p className="mt-4 text-xs text-slate-500">Servicios del menú que ofrece (al menos uno):</p>
+              <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-slate-100 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+                <ul className="grid gap-1 sm:grid-cols-2">
+                  {activeServices.map((s) => (
+                    <li key={s.id}>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="rounded border-slate-300"
+                          checked={newProServices.includes(s.id)}
+                          onChange={(e) =>
+                            setNewProServices((prev) =>
+                              e.target.checked ? [...prev, s.id] : prev.filter((x) => x !== s.id)
+                            )
+                          }
+                        />
+                        {s.name}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          )}
           <button
             type="button"
-            disabled={!newProName.trim() || newProBranches.length === 0 || createProfessional.isPending}
+            disabled={
+              !newProName.trim() ||
+              newProBranches.length === 0 ||
+              (activeServices.length > 0 && newProServices.length === 0) ||
+              createProfessional.isPending
+            }
             onClick={() => {
               createProfessional.mutate(
                 {
                   name: newProName.trim(),
                   email: newProEmail.trim() || undefined,
                   branch_ids: newProBranches,
+                  service_ids: newProServices,
                 },
                 {
                   onSuccess: () => {
                     setNewProName("");
                     setNewProEmail("");
                     setNewProBranches([]);
+                    setNewProServices([]);
                   },
                 }
               );
