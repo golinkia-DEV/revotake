@@ -52,6 +52,55 @@ interface StoreItem {
   settings: Record<string, unknown>;
 }
 
+// ── Selector de tipo de negocio ────────────────────────────────────────────
+function StoreTypeSelector({
+  types,
+  selected,
+  onSelect,
+}: {
+  types: StoreTypeItem[];
+  selected: string;
+  onSelect: (id: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const filtered = types.filter((t) =>
+    t.name.toLowerCase().includes(q.toLowerCase()) ||
+    (t.description ?? "").toLowerCase().includes(q.toLowerCase())
+  );
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar tipo de negocio..."
+          className="input-field pl-9 text-sm"
+        />
+      </div>
+      <div className="grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-3">
+        {filtered.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onSelect(t.id)}
+            className={`rounded-xl border px-3 py-2.5 text-left text-xs transition-all ${
+              selected === t.id
+                ? "border-primary bg-primary/10 font-semibold text-primary"
+                : "border-slate-200 hover:border-primary/40 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            }`}
+          >
+            <span className="block font-medium leading-tight">{t.name}</span>
+          </button>
+        ))}
+        {filtered.length === 0 && (
+          <p className="col-span-3 py-4 text-center text-sm text-slate-400">Sin resultados</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function StoresPage() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -228,6 +277,7 @@ export default function StoresPage() {
   return (
     <AppLayout>
       <div className="mb-10 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-on-surface mb-2">Tiendas</h1>
           <p className="text-slate-500">Cada tienda tiene su propia agenda, stock, clientes e IA.</p>
@@ -288,16 +338,19 @@ export default function StoresPage() {
               </p>
               <input value={name} onChange={(e) => setName(e.target.value)} className="input-field" placeholder="Nombre de la tienda *" />
               <div>
-                <label className="mb-2 block text-xs text-slate-500">Tipo de negocio</label>
-                <select value={typeId} onChange={(e) => setTypeId(e.target.value)} className="input-field">
-                  {(types?.items as StoreTypeItem[] | undefined)?.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                <label className="mb-2 block text-xs font-semibold text-slate-500">Tipo de negocio</label>
+                {/* Buscador */}
+                <StoreTypeSelector
+                  types={(types?.items as StoreTypeItem[] | undefined) ?? []}
+                  selected={typeId}
+                  onSelect={setTypeId}
+                />
               </div>
-              {typeId && <p className="text-sm text-slate-500">{(types?.items as StoreTypeItem[])?.find((x) => x.id === typeId)?.description}</p>}
+              {typeId && (
+                <p className="text-sm text-slate-500">
+                  {(types?.items as StoreTypeItem[])?.find((x) => x.id === typeId)?.description}
+                </p>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
