@@ -88,6 +88,23 @@ class Branch(Base):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
 
+class WorkStation(Base):
+    """Sillón, sala u otro puesto físico en una sede (ocupación vs disponible)."""
+
+    __tablename__ = "work_stations"
+    __table_args__ = (Index("ix_work_stations_branch_active", "branch_id", "is_active"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    branch_id: Mapped[str] = mapped_column(ForeignKey("branches.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    # chair | room | other
+    kind: Mapped[str] = mapped_column(String(32), default="chair")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+
+
 class Professional(Base):
     __tablename__ = "professionals"
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -113,6 +130,9 @@ class ProfessionalBranch(Base):
     professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
     branch_id: Mapped[str] = mapped_column(ForeignKey("branches.id"), index=True)
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    # none: no consume puesto | fixed: sillón/sala asignado en esta sede | dynamic: el sistema asigna uno libre
+    station_mode: Mapped[str] = mapped_column(String(16), default="none")
+    default_station_id: Mapped[str | None] = mapped_column(ForeignKey("work_stations.id"), nullable=True, index=True)
 
 
 class Service(Base):
@@ -204,6 +224,7 @@ class Appointment(Base):
     professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
     service_id: Mapped[str] = mapped_column(ForeignKey("scheduling_services.id"), index=True)
     client_id: Mapped[str | None] = mapped_column(ForeignKey("clients.id"), nullable=True, index=True)
+    station_id: Mapped[str | None] = mapped_column(ForeignKey("work_stations.id"), nullable=True, index=True)
     start_time: Mapped[datetime] = mapped_column(DateTime)
     end_time: Mapped[datetime] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(32), default=AppointmentStatus.CONFIRMED.value, index=True)

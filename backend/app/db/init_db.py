@@ -22,11 +22,13 @@ from datetime import time
 
 from app.core.config import settings
 from app.db.store_type_seeds import store_type_seeds_for_wellness
+from app.services.work_stations import seed_work_stations_from_store_settings
 
 DEFAULT_SETTINGS = {
     "ai": {"business_context": "", "tone": "professional"},
     "stock": {"replenishment_buffer_days": 2},
     "agenda": {"default_duration_minutes": 30, "reminder_hours_before": 24},
+    "local_structure": {"chair_count": 0, "room_count": 0},
 }
 
 
@@ -500,6 +502,104 @@ async def _migrate_scheduling_operations_extensions():
             print(f"Aviso índice panel citas ({idx_sql[:40]}…):", e)
 
 
+async def _migrate_work_stations():
+    """Sillones/salas por sede y vínculo profesional–puesto."""
+    if "postgresql" in settings.DATABASE_URL:
+        stmts = [
+            """
+            CREATE TABLE IF NOT EXISTS work_stations (
+                id VARCHAR NOT NULL PRIMARY KEY,
+                store_id VARCHAR NOT NULL REFERENCES stores(id),
+                branch_id VARCHAR NOT NULL REFERENCES branches(id),
+                name VARCHAR(200) NOT NULL,
+                kind VARCHAR(32) NOT NULL DEFAULT 'chair',
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                is_active BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
+            );
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_work_stations_store ON work_stations (store_id);",
+            "CREATE INDEX IF NOT EXISTS ix_work_stations_branch ON work_stations (branch_id);",
+            "CREATE INDEX IF NOT EXISTS ix_work_stations_branch_active ON work_stations (branch_id, is_active);",
+            "ALTER TABLE professional_branches ADD COLUMN IF NOT EXISTS station_mode VARCHAR(16) DEFAULT 'none';",
+            "ALTER TABLE professional_branches ADD COLUMN IF NOT EXISTS default_station_id VARCHAR;",
+            "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS station_id VARCHAR;",
+        ]
+        for sql in stmts:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(sql))
+            except Exception as e:
+                print(f"Aviso migración work_stations ({sql[:50]}…):", e)
+        for fk_sql in (
+            """DO $body$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'professional_branches_default_station_id_fkey'
+              ) THEN
+                ALTER TABLE professional_branches
+                ADD CONSTRAINT professional_branches_default_station_id_fkey
+                FOREIGN KEY (default_station_id) REFERENCES work_stations(id);
+              END IF;
+            END $body$ LANGUAGE plpgsql;""",
+            """DO $body$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'appointments_station_id_fkey'
+              ) THEN
+                ALTER TABLE appointments
+                ADD CONSTRAINT appointments_station_id_fkey
+                FOREIGN KEY (station_id) REFERENCES work_stations(id);
+              END IF;
+            END $body$ LANGUAGE plpgsql;""",
+        ):
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(fk_sql))
+            except Exception as e:
+                print("Aviso FK work_stations:", e)
+        for idx_sql in (
+            "CREATE INDEX IF NOT EXISTS ix_prof_branch_default_station ON professional_branches (default_station_id);",
+            "CREATE INDEX IF NOT EXISTS ix_appointments_station ON appointments (station_id);",
+        ):
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(idx_sql))
+            except Exception as e:
+                print(f"Aviso índice work_stations ({idx_sql[:40]}…):", e)
+    elif "sqlite" in settings.DATABASE_URL:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS work_stations (
+                            id VARCHAR NOT NULL PRIMARY KEY,
+                            store_id VARCHAR NOT NULL REFERENCES stores(id),
+                            branch_id VARCHAR NOT NULL REFERENCES branches(id),
+                            name VARCHAR(200) NOT NULL,
+                            kind VARCHAR(32) NOT NULL DEFAULT 'chair',
+                            sort_order INTEGER NOT NULL DEFAULT 0,
+                            is_active BOOLEAN NOT NULL DEFAULT 1,
+                            created_at TIMESTAMP
+                        );
+                        """
+                    )
+                )
+        except Exception as e:
+            print("Aviso sqlite work_stations table:", e)
+        for stmt in (
+            "ALTER TABLE professional_branches ADD COLUMN station_mode VARCHAR(16) DEFAULT 'none';",
+            "ALTER TABLE professional_branches ADD COLUMN default_station_id VARCHAR;",
+            "ALTER TABLE appointments ADD COLUMN station_id VARCHAR;",
+        ):
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(stmt))
+            except Exception:
+                pass
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -543,6 +643,10 @@ async def init_db():
         await _migrate_professional_invite_and_commissions()
     except Exception as e:
         print("Aviso migración professional invite/commissions:", e)
+    try:
+        await _migrate_work_stations()
+    except Exception as e:
+        print("Aviso migración work_stations:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:
@@ -621,6 +725,12 @@ async def init_db():
             )
             session.add(branch)
             await session.flush()
+            await seed_work_stations_from_store_settings(
+                session,
+                store_id=store.id,
+                branch_id=branch.id,
+                store_settings={"local_structure": {"chair_count": 4, "room_count": 1}},
+            )
             prof = Professional(
                 store_id=store.id,
                 name="Profesional demo",

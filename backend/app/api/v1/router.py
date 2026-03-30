@@ -5,6 +5,7 @@ from app.api.v1.endpoints import (
     tickets,
     products,
     meetings,
+    agenda_hub,
     forms,
     ai,
     dashboard,
@@ -56,6 +57,7 @@ api_router.include_router(clients.router, prefix="/clients", tags=["clients"])
 api_router.include_router(tickets.router, prefix="/tickets", tags=["tickets"])
 api_router.include_router(products.router, prefix="/products", tags=["products"])
 api_router.include_router(meetings.router, prefix="/meetings", tags=["meetings"])
+api_router.include_router(agenda_hub.router, prefix="/meetings", tags=["meetings"])
 api_router.include_router(forms.router, prefix="/forms", tags=["forms"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])

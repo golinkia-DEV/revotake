@@ -1,13 +1,13 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import api from "@/lib/api";
 import { getStoreId } from "@/lib/store";
 import { CHILE_REGIONES_COMUNAS } from "@/lib/chileRegionesComunas";
 import Link from "next/link";
-import { MapPin, Plus, Save, Users } from "lucide-react";
+import { Armchair, MapPin, Plus, Save, Users } from "lucide-react";
 import { toast } from "sonner";
 
 type BranchRow = {
@@ -81,6 +81,8 @@ export default function SchedulingSedesPage() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scheduling-branches"] });
+      qc.invalidateQueries({ queryKey: ["scheduling-branch-stations"] });
+      qc.invalidateQueries({ queryKey: ["scheduling-branch-occupancy"] });
       setNewName("");
       setNewRegion("");
       setNewComuna("");
@@ -91,7 +93,11 @@ export default function SchedulingSedesPage() {
   const patchBranch = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api.patch(`/scheduling/branches/${id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scheduling-branches"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduling-branches"] });
+      qc.invalidateQueries({ queryKey: ["scheduling-branch-stations"] });
+      qc.invalidateQueries({ queryKey: ["scheduling-branch-occupancy"] });
+    },
   });
 
   const createProfessional = useMutation({
@@ -103,6 +109,8 @@ export default function SchedulingSedesPage() {
       service_ids: string[];
       service_commissions: Record<string, number>;
       product_commission_percent: number | null;
+      station_mode?: "none" | "fixed" | "dynamic";
+      default_station_id?: string | null;
     }) => api.post("/scheduling/professionals", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scheduling-professionals"] });
@@ -131,6 +139,19 @@ export default function SchedulingSedesPage() {
   const [newProServices, setNewProServices] = useState<string[]>([]);
   const [newProServiceCommission, setNewProServiceCommission] = useState("0");
   const [newProProductCommission, setNewProProductCommission] = useState("");
+  const [newProStationMode, setNewProStationMode] = useState<"none" | "fixed" | "dynamic">("none");
+  const [newProStationId, setNewProStationId] = useState("");
+
+  const branchStationsQueries = useQueries({
+    queries: (newProBranches ?? []).map((bid) => ({
+      queryKey: ["scheduling-branch-stations", storeId, bid] as const,
+      queryFn: () => api.get<{ items: { id: string; name: string; kind: string; branch_id: string }[] }>(`/scheduling/branches/${bid}/stations`).then((r) => r.data),
+      enabled: !!storeId && newProBranches.length > 0,
+    })),
+  });
+  const stationsForPick = branchStationsQueries.flatMap((q, i) =>
+    (q.data?.items ?? []).map((s) => ({ ...s, _branchId: newProBranches[i] }))
+  );
 
   function draftBranches(p: ProfessionalRow): string[] {
     return proDraft[p.id] ?? p.branch_ids;
@@ -174,6 +195,7 @@ export default function SchedulingSedesPage() {
             <BranchEditor
               key={b.id}
               branch={b}
+              storeId={storeId}
               onSave={(body) => patchBranch.mutate({ id: b.id, body })}
               saving={patchBranch.isPending}
             />
@@ -423,6 +445,49 @@ export default function SchedulingSedesPage() {
               </div>
             </>
           )}
+          <div className="mt-4 space-y-3 rounded-xl border border-slate-100 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-950/30">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Puesto físico (por sede)</p>
+            <p className="text-xs text-slate-500">
+              <strong>Fijo</strong>: siempre el mismo sillón/sala en cada sede donde atiende (elegí uno de la lista).{" "}
+              <strong>Dinámico</strong>: al reservar se asigna un puesto libre. <strong>Sin puesto</strong>: no controla ocupación de sillones.
+            </p>
+            <label className="block text-sm">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">Modo</span>
+              <select
+                className="w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                value={newProStationMode}
+                onChange={(e) => {
+                  setNewProStationMode(e.target.value as "none" | "fixed" | "dynamic");
+                  setNewProStationId("");
+                }}
+              >
+                <option value="none">Sin puesto asociado</option>
+                <option value="fixed">Sillón o sala fija</option>
+                <option value="dynamic">Dinámico (cualquier puesto libre)</option>
+              </select>
+            </label>
+            {newProStationMode === "fixed" && (
+              <label className="block text-sm">
+                <span className="mb-1 block text-slate-600 dark:text-slate-400">Puesto (debe ser de una sede marcada arriba)</span>
+                <select
+                  className="w-full max-w-md rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                  value={newProStationId}
+                  onChange={(e) => setNewProStationId(e.target.value)}
+                  disabled={newProBranches.length === 0}
+                >
+                  <option value="">Seleccionar…</option>
+                  {stationsForPick.map((s) => {
+                    const bn = branches.find((x) => x.id === s._branchId)?.name ?? "Sede";
+                    return (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.kind === "room" ? "sala" : s.kind === "chair" ? "sillón" : "otro"}) — {bn}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+            )}
+          </div>
           <button
             type="button"
             disabled={
@@ -432,6 +497,7 @@ export default function SchedulingSedesPage() {
               newProBranches.length === 0 ||
               newProServices.length === 0 ||
               activeServices.length === 0 ||
+              (newProStationMode === "fixed" && !newProStationId.trim()) ||
               createProfessional.isPending
             }
             onClick={() => {
@@ -454,6 +520,9 @@ export default function SchedulingSedesPage() {
                   service_ids: newProServices,
                   service_commissions,
                   product_commission_percent,
+                  station_mode: newProStationMode,
+                  default_station_id:
+                    newProStationMode === "fixed" && newProStationId.trim() ? newProStationId.trim() : null,
                 },
                 {
                   onSuccess: () => {
@@ -464,6 +533,8 @@ export default function SchedulingSedesPage() {
                     setNewProServices([]);
                     setNewProServiceCommission("0");
                     setNewProProductCommission("");
+                    setNewProStationMode("none");
+                    setNewProStationId("");
                   },
                 }
               );
@@ -478,12 +549,148 @@ export default function SchedulingSedesPage() {
   );
 }
 
+function BranchStationsPanel({ branchId, storeId }: { branchId: string; storeId: string }) {
+  const qc = useQueryClient();
+  const [addName, setAddName] = useState("");
+  const [addKind, setAddKind] = useState<"chair" | "room" | "other">("chair");
+
+  const { data: stationsData } = useQuery({
+    queryKey: ["scheduling-branch-stations", storeId, branchId],
+    queryFn: () => api.get<{ items: { id: string; name: string; kind: string; is_active: boolean; sort_order: number }[] }>(`/scheduling/branches/${branchId}/stations`).then((r) => r.data),
+    enabled: !!storeId && !!branchId,
+  });
+
+  const { data: occ } = useQuery({
+    queryKey: ["scheduling-branch-occupancy", storeId, branchId],
+    queryFn: () =>
+      api
+        .get<{
+          total: number;
+          occupied: number;
+          available: number;
+          stations: { id: string; name: string; kind: string; busy: boolean; current: { client_name: string; professional_name: string } | null }[];
+        }>(`/scheduling/branches/${branchId}/stations/occupancy`)
+        .then((r) => r.data),
+    enabled: !!storeId && !!branchId,
+    refetchInterval: 45_000,
+  });
+
+  const createSt = useMutation({
+    mutationFn: () =>
+      api.post(`/scheduling/branches/${branchId}/stations`, {
+        name: addName.trim(),
+        kind: addKind,
+        sort_order: stationsData?.items?.length ?? 0,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduling-branch-stations", storeId, branchId] });
+      qc.invalidateQueries({ queryKey: ["scheduling-branch-occupancy", storeId, branchId] });
+      setAddName("");
+      toast.success("Puesto creado");
+    },
+    onError: () => toast.error("No se pudo crear el puesto"),
+  });
+
+  const patchSt = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) => api.patch(`/scheduling/stations/${id}`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduling-branch-stations", storeId, branchId] });
+      qc.invalidateQueries({ queryKey: ["scheduling-branch-occupancy", storeId, branchId] });
+    },
+  });
+
+  const occById = new Map((occ?.stations ?? []).map((x) => [x.id, x]));
+  const items = stationsData?.items ?? [];
+
+  return (
+    <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-on-surface">
+        <Armchair className="h-4 w-4 text-primary" />
+        Sillones y salas
+        {occ != null && (
+          <span className="text-xs font-normal text-slate-500">
+            {occ.occupied} ocupados · {occ.available} libres ({occ.total} activos en uso)
+          </span>
+        )}
+      </div>
+      <ul className="mb-4 space-y-2 text-sm">
+        {items.map((s) => {
+          const live = occById.get(s.id);
+          const busy = live?.busy ?? false;
+          return (
+            <li
+              key={s.id}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-white/80 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40"
+            >
+              <div>
+                <span className="font-medium text-on-surface">{s.name}</span>
+                <span className="ml-2 text-xs text-slate-500">
+                  {s.kind === "room" ? "Sala" : s.kind === "chair" ? "Sillón" : "Otro"}
+                </span>
+                {busy && live?.current && (
+                  <span className="mt-1 block text-xs text-amber-800 dark:text-amber-200">
+                    Ocupado: {live.current.client_name} · {live.current.professional_name}
+                  </span>
+                )}
+                {!busy && s.is_active && <span className="mt-1 block text-xs text-emerald-700 dark:text-emerald-300">Libre ahora</span>}
+                {!s.is_active && <span className="mt-1 block text-xs text-slate-400">Inactivo</span>}
+              </div>
+              <button
+                type="button"
+                className="text-xs font-semibold text-primary hover:underline"
+                onClick={() => patchSt.mutate({ id: s.id, body: { is_active: !s.is_active } })}
+                disabled={patchSt.isPending}
+              >
+                {s.is_active ? "Desactivar" : "Activar"}
+              </button>
+            </li>
+          );
+        })}
+        {items.length === 0 && <li className="text-xs text-slate-500">No hay puestos cargados. Creá uno abajo o ajustá la plantilla en Tiendas → Configuración.</li>}
+      </ul>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-slate-500">Nuevo nombre</span>
+          <input
+            className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+            value={addName}
+            onChange={(e) => setAddName(e.target.value)}
+            placeholder="Ej. Sillón ventana"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs text-slate-500">Tipo</span>
+          <select
+            className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
+            value={addKind}
+            onChange={(e) => setAddKind(e.target.value as "chair" | "room" | "other")}
+          >
+            <option value="chair">Sillón / puesto</option>
+            <option value="room">Sala / cabina</option>
+            <option value="other">Otro</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          disabled={!addName.trim() || createSt.isPending}
+          onClick={() => createSt.mutate()}
+          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+        >
+          Agregar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function BranchEditor({
   branch,
+  storeId,
   onSave,
   saving,
 }: {
   branch: BranchRow;
+  storeId: string | null;
   onSave: (body: Record<string, unknown>) => void;
   saving: boolean;
 }) {
@@ -617,6 +824,7 @@ function BranchEditor({
       >
         Guardar cambios
       </button>
+      {storeId ? <BranchStationsPanel branchId={branch.id} storeId={storeId} /> : null}
     </li>
   );
 }

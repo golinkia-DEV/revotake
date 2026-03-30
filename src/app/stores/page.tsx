@@ -116,9 +116,13 @@ export default function StoresPage() {
   const [businessCtx, setBusinessCtx] = useState("");
   const [durationMin, setDurationMin] = useState(30);
   const [reminderHours, setReminderHours] = useState(24);
+  const [chairCount, setChairCount] = useState(4);
+  const [roomCount, setRoomCount] = useState(1);
   const [tone, setTone] = useState("professional");
   const [configWorkflowPreset, setConfigWorkflowPreset] = useState<WorkflowPresetId>("generic");
   const [configWorkflowNotes, setConfigWorkflowNotes] = useState("");
+  const [configChairCount, setConfigChairCount] = useState(0);
+  const [configRoomCount, setConfigRoomCount] = useState(0);
   const [storeProfile, setStoreProfile] = useState<StoreProfile>(() => emptyStoreProfile());
   const [profileConfig, setProfileConfig] = useState<StoreProfile>(() => emptyStoreProfile());
   /** Paso de listado de clientes: omitir o pegar texto / CSV para IA */
@@ -170,6 +174,9 @@ export default function StoresPage() {
     const p = op.preset as WorkflowPresetId | undefined;
     setConfigWorkflowPreset(p && WORKFLOW_PRESETS.some((x) => x.id === p) ? p : "generic");
     setConfigWorkflowNotes(typeof op.workflow_notes === "string" ? op.workflow_notes : "");
+    const loc = (configStore.settings?.local_structure as Record<string, unknown>) || {};
+    setConfigChairCount(typeof loc.chair_count === "number" ? loc.chair_count : Number(loc.chair_count) || 0);
+    setConfigRoomCount(typeof loc.room_count === "number" ? loc.room_count : Number(loc.room_count) || 0);
     setProfileConfig(mergeStoreProfileFromApi(configStore.settings?.store_profile));
   }, [configStore]);
 
@@ -190,6 +197,10 @@ export default function StoresPage() {
           ...agendaBase,
           default_duration_minutes: durationMin,
           reminder_hours_before: Math.max(1, Math.min(168, reminderHours)),
+        },
+        local_structure: {
+          chair_count: Math.max(0, Math.min(200, chairCount)),
+          room_count: Math.max(0, Math.min(100, roomCount)),
         },
       };
       const res = await api.post("/stores/", { name: name.trim(), store_type_id: typeId, settings_override });
@@ -258,6 +269,10 @@ export default function StoresPage() {
               default_duration_minutes: durationMin,
               reminder_hours_before: Math.max(1, Math.min(168, reminderHours)),
             },
+            local_structure: {
+              chair_count: Math.max(0, Math.min(200, configChairCount)),
+              room_count: Math.max(0, Math.min(100, configRoomCount)),
+            },
           },
         },
         { headers: { "X-Store-Id": configStore.id } }
@@ -300,6 +315,8 @@ export default function StoresPage() {
               setTone("professional");
               setDurationMin(30);
               setReminderHours(24);
+              setChairCount(4);
+              setRoomCount(1);
               setStoreProfile(emptyStoreProfile());
               setClientImportMode("skip");
               setClientImportText("");
@@ -522,6 +539,38 @@ export default function StoresPage() {
                   <p className="mt-1 text-xs text-slate-500">Se usa para avisar al cliente por correo cuando aplique.</p>
                 </div>
               </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                <p className="text-sm font-semibold text-on-surface">Sillones y salas del local</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Definí cuántos <strong>sillones</strong> y <strong>salas</strong> tiene tu primer local. Al crear la primera sede en Citas, se generarán
+                  automáticamente con nombres tipo «Sillón 1» y «Sala 1». Podés editarlos o agregar más en{" "}
+                  <strong>Sedes y equipo</strong>.
+                </p>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs text-slate-500">Cantidad de sillones / puestos</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={200}
+                      value={chairCount}
+                      onChange={(e) => setChairCount(Math.max(0, Math.min(200, +e.target.value || 0)))}
+                      className="input-field"
+                    />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="mb-1 block text-xs text-slate-500">Cantidad de salas / cabinas</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={roomCount}
+                      onChange={(e) => setRoomCount(Math.max(0, Math.min(100, +e.target.value || 0)))}
+                      className="input-field"
+                    />
+                  </label>
+                </div>
+              </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setWizardStep(5)} className="btn-ghost">
                   Atrás
@@ -669,6 +718,9 @@ export default function StoresPage() {
                 )}
                 <li>
                   <strong>Recordatorio citas:</strong> {reminderHours} h antes · duración por defecto {durationMin} min
+                </li>
+                <li>
+                  <strong>Sillones / salas (primer local):</strong> {chairCount} sillones · {roomCount} salas (se crean al registrar la primera sede)
                 </li>
                 <li>
                   <strong>Clientes (IA):</strong>{" "}
@@ -862,6 +914,29 @@ export default function StoresPage() {
                 />
                 <p className="text-xs text-slate-500 mt-1">Se envía un correo al cliente (si tiene email) para confirmar o rechazar.</p>
               </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Sillones al crear nueva sede (plantilla)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={200}
+                  value={configChairCount}
+                  onChange={(e) => setConfigChairCount(Math.max(0, Math.min(200, +e.target.value || 0)))}
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Salas al crear nueva sede (plantilla)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={configRoomCount}
+                  onChange={(e) => setConfigRoomCount(Math.max(0, Math.min(100, +e.target.value || 0)))}
+                  className="input-field"
+                />
+                <p className="mt-1 text-xs text-slate-500">Solo aplica cuando la sede aún no tiene puestos registrados.</p>
+              </div>
             </div>
             <div className="flex gap-3">
               <button type="button" onClick={() => saveConfig.mutate()} disabled={saveConfig.isPending} className="btn-primary">
@@ -891,6 +966,8 @@ export default function StoresPage() {
               setTone("professional");
               setDurationMin(30);
               setReminderHours(24);
+              setChairCount(4);
+              setRoomCount(1);
               setStoreProfile(emptyStoreProfile());
             }}
             className="btn-primary inline-flex items-center gap-2"

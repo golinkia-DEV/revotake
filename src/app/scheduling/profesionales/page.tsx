@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckSquare, Loader2, Plus, UserPlus } from "lucide-react";
@@ -68,6 +68,20 @@ export default function CrearProfesionalPage() {
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [commissionByService, setCommissionByService] = useState<Record<string, string>>({});
   const [productCommission, setProductCommission] = useState("");
+  const [stationMode, setStationMode] = useState<"none" | "fixed" | "dynamic">("none");
+  const [stationId, setStationId] = useState("");
+
+  const branchStationsQueries = useQueries({
+    queries: branchIds.map((bid) => ({
+      queryKey: ["scheduling-branch-stations", storeId, bid] as const,
+      queryFn: () =>
+        api.get<{ items: { id: string; name: string; kind: string; branch_id: string }[] }>(`/scheduling/branches/${bid}/stations`).then((r) => r.data),
+      enabled: !!storeId && branchIds.length > 0,
+    })),
+  });
+  const stationsForPick = branchStationsQueries.flatMap((q, i) =>
+    (q.data?.items ?? []).map((s) => ({ ...s, _branchId: branchIds[i] }))
+  );
 
   useEffect(() => {
     setCommissionByService((prev) => {
@@ -91,6 +105,8 @@ export default function CrearProfesionalPage() {
       service_ids: string[];
       service_commissions: Record<string, number>;
       product_commission_percent: number | null;
+      station_mode?: "none" | "fixed" | "dynamic";
+      default_station_id?: string | null;
     }) => api.post("/scheduling/professionals", body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["scheduling-professionals"] });
@@ -102,6 +118,8 @@ export default function CrearProfesionalPage() {
       setServiceIds([]);
       setCommissionByService({});
       setProductCommission("");
+      setStationMode("none");
+      setStationId("");
     },
     onError: (err: unknown) => {
       const msg =
@@ -128,6 +146,7 @@ export default function CrearProfesionalPage() {
     branchIds.length > 0 &&
     serviceIds.length > 0 &&
     commissionsOk &&
+    !(stationMode === "fixed" && !stationId.trim()) &&
     !createProfessional.isPending;
 
   function submit() {
@@ -148,6 +167,8 @@ export default function CrearProfesionalPage() {
       service_ids: serviceIds,
       service_commissions,
       product_commission_percent,
+      station_mode: stationMode,
+      default_station_id: stationMode === "fixed" && stationId.trim() ? stationId.trim() : null,
     });
   }
 
@@ -322,6 +343,50 @@ export default function CrearProfesionalPage() {
                   placeholder="Ej. 5"
                 />
               </label>
+            </div>
+
+            <div className="mb-6 rounded-xl border border-slate-100 bg-slate-50/80 p-4 dark:border-slate-800">
+              <p className="mb-2 text-sm font-semibold text-on-surface">Sillón o sala (ocupación del local)</p>
+              <p className="mb-3 text-xs text-slate-500">
+                <strong>Fijo</strong>: siempre el mismo puesto en cada sede marcada. <strong>Dinámico</strong>: al reservar se elige un puesto libre.{" "}
+                <strong>Sin puesto</strong>: no participa del control de sillones.
+              </p>
+              <label className="mb-3 block text-sm">
+                <span className="mb-1 block text-xs text-slate-500">Modo</span>
+                <select
+                  className="input-field max-w-md"
+                  value={stationMode}
+                  onChange={(e) => {
+                    setStationMode(e.target.value as "none" | "fixed" | "dynamic");
+                    setStationId("");
+                  }}
+                >
+                  <option value="none">Sin puesto asociado</option>
+                  <option value="fixed">Puesto fijo</option>
+                  <option value="dynamic">Dinámico</option>
+                </select>
+              </label>
+              {stationMode === "fixed" && (
+                <label className="block text-sm">
+                  <span className="mb-1 block text-xs text-slate-500">Elegí el sillón o sala (de una sede marcada arriba)</span>
+                  <select
+                    className="input-field max-w-md"
+                    value={stationId}
+                    onChange={(e) => setStationId(e.target.value)}
+                    disabled={branchIds.length === 0}
+                  >
+                    <option value="">Seleccionar…</option>
+                    {stationsForPick.map((s) => {
+                      const bn = branches.find((x) => x.id === s._branchId)?.name ?? "Sede";
+                      return (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.kind === "room" ? "sala" : s.kind === "chair" ? "sillón" : "otro"}) — {bn}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </label>
+              )}
             </div>
 
             <p className="mb-4 text-xs text-amber-800 dark:text-amber-200">

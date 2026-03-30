@@ -19,6 +19,7 @@ from app.models.scheduling import (
     Professional,
 )
 from app.services.scheduling_availability import load_service_for_professional
+from app.services.work_stations import assign_station_for_booking
 
 
 async def _lock_professional(db: AsyncSession, professional_id: str, store_id: str) -> None:
@@ -101,6 +102,14 @@ async def create_appointment_booking(
     if await _has_overlap(db, professional_id, start_time, end_time):
         raise ValueError("El horario ya no está disponible")
 
+    station_id = await assign_station_for_booking(
+        db,
+        branch_id=branch_id,
+        professional_id=professional_id,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
     if payment_mode == PaymentMode.ONLINE.value:
         status = AppointmentStatus.PENDING_PAYMENT.value
         pay_stat = PaymentStatus.PENDING.value
@@ -116,6 +125,7 @@ async def create_appointment_booking(
         professional_id=professional_id,
         service_id=service_id,
         client_id=client_id,
+        station_id=station_id,
         start_time=start_time,
         end_time=end_time,
         status=status,

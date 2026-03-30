@@ -9,6 +9,7 @@ from app.models.form_link import FormLink
 from app.models.meeting import Meeting, MeetingConfirmationStatus
 from app.models.scheduling import (
     Branch,
+    WorkStation,
     Professional,
     ProfessionalBranch,
     Service as SchedulingService,

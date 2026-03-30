@@ -16,11 +16,11 @@ import { isAuthenticated } from "@/lib/auth";
 type NavItem = { href: string; label: string; icon: string; filled?: boolean; perm?: string | null };
 
 const FULL_NAV: NavItem[] = [
+  { href: "/calendar", label: "Agenda", icon: "calendar_today", filled: true },
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { href: "/stores", label: "Tiendas", icon: "storefront" },
   { href: "/kanban", label: "Operaciones", icon: "settings_suggest", filled: true },
   { href: "/clients", label: "Clientes", icon: "group" },
-  { href: "/calendar", label: "Agenda", icon: "calendar_today" },
   { href: "/scheduling", label: "Citas", icon: "event_available", filled: true },
   { href: "/scheduling/services", label: "Menú de servicios", icon: "menu_book", filled: true },
   { href: "/scheduling/profesionales", label: "Crear profesional", icon: "person_add", filled: true },

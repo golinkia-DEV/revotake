@@ -5,7 +5,7 @@ import re
 import secrets
 from urllib.parse import quote
 from datetime import date, datetime, time, timedelta
-from typing import Optional, Literal
+from typing import Optional, Literal, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, field_validator
@@ -29,7 +29,7 @@ from app.models.user import User
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.client import Client
 from app.models.product import Product
-from app.models.store import StoreMember
+from app.models.store import Store, StoreMember
 from app.models.client_document import ClientDocument
 from app.services.mail import send_html_email, mail_configured
 from app.models.ticket import Ticket, TicketStatus
@@ -51,9 +51,15 @@ from app.models.scheduling import (
     PaymentAttempt,
     PaymentAttemptStatus,
     WaitlistEntry,
+    WorkStation,
 )
 from app.services.scheduling_availability import compute_slots
 from app.services.scheduling_booking import create_appointment_booking, schedule_reminder_jobs
+from app.services.work_stations import (
+    normalize_professional_branch_station,
+    seed_work_stations_from_store_settings,
+    station_time_free,
+)
 from app.services.scheduling_audit import log_appointment_action
 
 router = APIRouter()
@@ -135,7 +141,163 @@ async def create_branch(
     )
     db.add(b)
     await db.flush()
+    store_row = await db.get(Store, ctx.store_id)
+    await seed_work_stations_from_store_settings(
+        db,
+        store_id=ctx.store_id,
+        branch_id=b.id,
+        store_settings=store_row.settings if store_row else None,
+    )
     return {"id": b.id, "slug": b.slug}
+
+
+def _station_out(ws: WorkStation) -> dict[str, Any]:
+    return {
+        "id": ws.id,
+        "branch_id": ws.branch_id,
+        "name": ws.name,
+        "kind": ws.kind,
+        "sort_order": ws.sort_order,
+        "is_active": ws.is_active,
+    }
+
+
+class WorkStationCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    kind: Literal["chair", "room", "other"] = "chair"
+    sort_order: int = 0
+
+
+class WorkStationPatch(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    kind: Optional[Literal["chair", "room", "other"]] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+@router.get("/branches/{branch_id}/stations")
+async def list_branch_stations(
+    branch_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
+):
+    br = await db.get(Branch, branch_id)
+    if not br or br.store_id != ctx.store_id:
+        raise HTTPException(404, "Sede no encontrada")
+    r = await db.execute(
+        select(WorkStation)
+        .where(WorkStation.branch_id == branch_id)
+        .order_by(WorkStation.sort_order, WorkStation.name)
+    )
+    return {"items": [_station_out(s) for s in r.scalars().all()]}
+
+
+@router.get("/branches/{branch_id}/stations/occupancy")
+async def branch_stations_occupancy(
+    branch_id: str,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_AGENDA_TIENDA)),
+    at: Optional[datetime] = Query(None, description="Instante UTC; por defecto ahora"),
+):
+    br = await db.get(Branch, branch_id)
+    if not br or br.store_id != ctx.store_id:
+        raise HTTPException(404, "Sede no encontrada")
+    now = at or datetime.utcnow()
+    r_st = await db.execute(
+        select(WorkStation)
+        .where(WorkStation.branch_id == branch_id, WorkStation.is_active.is_(True))
+        .order_by(WorkStation.sort_order, WorkStation.name)
+    )
+    stations = r_st.scalars().all()
+    active_status = (
+        AppointmentStatus.CONFIRMED.value,
+        AppointmentStatus.PENDING_PAYMENT.value,
+        AppointmentStatus.COMPLETED.value,
+    )
+    out = []
+    for st in stations:
+        q = (
+            select(Appointment, Client.name, Professional.name)
+            .outerjoin(Client, Client.id == Appointment.client_id)
+            .outerjoin(Professional, Professional.id == Appointment.professional_id)
+            .where(
+                Appointment.station_id == st.id,
+                Appointment.status.in_(active_status),
+                Appointment.start_time <= now,
+                Appointment.end_time > now,
+            )
+            .limit(1)
+        )
+        row = (await db.execute(q)).first()
+        busy = row is not None
+        occ = None
+        if row:
+            ap, cname, pname = row[0], row[1], row[2]
+            occ = {
+                "appointment_id": ap.id,
+                "client_name": (cname or "").strip() or "—",
+                "professional_name": (pname or "").strip() or "—",
+                "start_time": ap.start_time.isoformat(),
+                "end_time": ap.end_time.isoformat(),
+            }
+        out.append({**_station_out(st), "busy": busy, "current": occ})
+    total = len(out)
+    busy_n = sum(1 for x in out if x["busy"])
+    return {
+        "at": now.isoformat(),
+        "branch_id": branch_id,
+        "total": total,
+        "occupied": busy_n,
+        "available": total - busy_n,
+        "stations": out,
+    }
+
+
+@router.post("/branches/{branch_id}/stations")
+async def create_branch_station(
+    branch_id: str,
+    data: WorkStationCreate,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_admin),
+):
+    br = await db.get(Branch, branch_id)
+    if not br or br.store_id != ctx.store_id:
+        raise HTTPException(404, "Sede no encontrada")
+    ws = WorkStation(
+        store_id=ctx.store_id,
+        branch_id=branch_id,
+        name=data.name.strip(),
+        kind=data.kind,
+        sort_order=data.sort_order,
+        is_active=True,
+    )
+    db.add(ws)
+    await db.flush()
+    return _station_out(ws)
+
+
+@router.patch("/stations/{station_id}")
+async def patch_station(
+    station_id: str,
+    data: WorkStationPatch,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_admin),
+):
+    ws = await db.get(WorkStation, station_id)
+    if not ws or ws.store_id != ctx.store_id:
+        raise HTTPException(404, "Puesto no encontrado")
+    if data.name is not None:
+        ws.name = data.name.strip()
+    if data.kind is not None:
+        ws.kind = data.kind
+    if data.sort_order is not None:
+        ws.sort_order = data.sort_order
+    if data.is_active is not None:
+        ws.is_active = data.is_active
+    await db.flush()
+    return _station_out(ws)
 
 
 @router.patch("/branches/{branch_id}")
@@ -189,6 +351,9 @@ class ProfessionalCreate(BaseModel):
     service_commissions: dict[str, float] = Field(default_factory=dict)
     # Un solo % para comisión sobre productos (inventario); null = sin comisión en productos
     product_commission_percent: Optional[float] = Field(None, ge=0, le=100)
+    # Por sede: mismo modo para todas; fixed requiere default_station_id en esa sede
+    station_mode: Literal["none", "fixed", "dynamic"] = "none"
+    default_station_id: Optional[str] = None
 
 
 @router.get("/professionals")
@@ -202,16 +367,23 @@ async def list_professionals(
     rows = r.scalars().all()
     pids = [p.id for p in rows]
     comm_by_pro: dict[str, dict[str, float]] = {pid: {} for pid in pids}
+    links_by_pro: dict[str, list[dict[str, Any]]] = {pid: [] for pid in pids}
     if pids:
         psq = await db.execute(select(ProfessionalService).where(ProfessionalService.professional_id.in_(pids)))
         for ps in psq.scalars().all():
             comm_by_pro.setdefault(ps.professional_id, {})[ps.service_id] = float(ps.commission_percent or 0)
+        pbq = await db.execute(select(ProfessionalBranch).where(ProfessionalBranch.professional_id.in_(pids)))
+        for pb in pbq.scalars().all():
+            links_by_pro.setdefault(pb.professional_id, []).append(
+                {
+                    "branch_id": pb.branch_id,
+                    "station_mode": pb.station_mode or "none",
+                    "default_station_id": pb.default_station_id,
+                }
+            )
     out = []
     for p in rows:
-        br = await db.execute(
-            select(ProfessionalBranch.branch_id).where(ProfessionalBranch.professional_id == p.id)
-        )
-        bids = [x[0] for x in br.all()]
+        bids = [x["branch_id"] for x in links_by_pro.get(p.id, [])]
         out.append(
             {
                 "id": p.id,
@@ -220,6 +392,7 @@ async def list_professionals(
                 "phone": p.phone,
                 "user_id": p.user_id,
                 "branch_ids": bids,
+                "branch_links": links_by_pro.get(p.id, []),
                 "invite_pending": bool(p.invite_token and not p.user_id),
                 "product_commission_percent": p.product_commission_percent,
                 "service_commissions": comm_by_pro.get(p.id, {}),
@@ -284,11 +457,19 @@ async def create_professional(
         br = await db.get(Branch, bid)
         if not br or br.store_id != ctx.store_id:
             raise HTTPException(400, "Sucursal inválida")
+        sm, ssid = await normalize_professional_branch_station(
+            db,
+            branch_id=bid,
+            station_mode=data.station_mode,
+            default_station_id=data.default_station_id,
+        )
         db.add(
             ProfessionalBranch(
                 professional_id=p.id,
                 branch_id=bid,
                 is_primary=(len(data.branch_ids) == 1 or i == 0),
+                station_mode=sm,
+                default_station_id=ssid,
             )
         )
     for sid in data.service_ids:
@@ -336,6 +517,8 @@ class ProfessionalPatch(BaseModel):
     name: Optional[str] = None
     branch_ids: Optional[list[str]] = None
     user_id: Optional[str] = None  # null o vacío = desvincular; debe ser miembro de la tienda
+    station_mode: Optional[Literal["none", "fixed", "dynamic"]] = None
+    default_station_id: Optional[str] = None
 
 
 @router.patch("/professionals/{professional_id}")
@@ -353,18 +536,43 @@ async def patch_professional(
     if data.branch_ids is not None:
         if len(data.branch_ids) == 0:
             raise HTTPException(400, "Debe quedar al menos una sede asignada")
+        prev_pb = (
+            await db.execute(select(ProfessionalBranch).where(ProfessionalBranch.professional_id == p.id))
+        ).scalars().all()
+        prev_by_branch = {x.branch_id: (x.station_mode or "none", x.default_station_id) for x in prev_pb}
         await db.execute(delete(ProfessionalBranch).where(ProfessionalBranch.professional_id == p.id))
         for i, bid in enumerate(data.branch_ids):
             br = await db.get(Branch, bid)
             if not br or br.store_id != ctx.store_id:
                 raise HTTPException(400, "Sucursal inválida")
+            prev = prev_by_branch.get(bid)
+            mode_in = data.station_mode if data.station_mode is not None else (prev[0] if prev else "none")
+            sid_in = data.default_station_id if data.default_station_id is not None else (prev[1] if prev else None)
+            sm, ssid = await normalize_professional_branch_station(
+                db,
+                branch_id=bid,
+                station_mode=mode_in,
+                default_station_id=sid_in,
+            )
             db.add(
                 ProfessionalBranch(
                     professional_id=p.id,
                     branch_id=bid,
                     is_primary=(len(data.branch_ids) == 1 or i == 0),
+                    station_mode=sm,
+                    default_station_id=ssid,
                 )
             )
+    elif data.station_mode is not None or data.default_station_id is not None:
+        pbs = await db.execute(select(ProfessionalBranch).where(ProfessionalBranch.professional_id == p.id))
+        for pb in pbs.scalars().all():
+            mode = data.station_mode if data.station_mode is not None else pb.station_mode
+            sid = data.default_station_id if data.default_station_id is not None else pb.default_station_id
+            sm, ssid = await normalize_professional_branch_station(
+                db, branch_id=pb.branch_id, station_mode=mode, default_station_id=sid
+            )
+            pb.station_mode = sm
+            pb.default_station_id = ssid
     raw = data.model_dump(exclude_unset=True)
     if "user_id" in raw:
         uid = raw["user_id"]
@@ -825,8 +1033,9 @@ async def list_appointments(
     status: Optional[str] = None,
 ):
     q = (
-        select(Appointment, Service.price_cents, Service.allow_price_override)
+        select(Appointment, Service.price_cents, Service.allow_price_override, WorkStation.name)
         .outerjoin(Service, Service.id == Appointment.service_id)
+        .outerjoin(WorkStation, WorkStation.id == Appointment.station_id)
         .where(Appointment.store_id == ctx.store_id)
         .order_by(Appointment.start_time)
     )
@@ -847,6 +1056,7 @@ async def list_appointments(
         a = row[0]
         price_c = row[1]
         allow_po = row[2]
+        st_name = row[3]
         out.append(
             {
                 "id": a.id,
@@ -854,6 +1064,8 @@ async def list_appointments(
                 "professional_id": a.professional_id,
                 "service_id": a.service_id,
                 "client_id": a.client_id,
+                "station_id": a.station_id,
+                "station_name": (st_name or "") if st_name else "",
                 "start_time": a.start_time.isoformat(),
                 "end_time": a.end_time.isoformat(),
                 "status": a.status,
@@ -1000,6 +1212,7 @@ class AppointmentPatch(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
     charged_price_cents: Optional[int] = None
+    station_id: Optional[str] = None
 
 
 @router.patch("/appointments/{appointment_id}")
@@ -1013,13 +1226,34 @@ async def patch_appointment(
     a = await db.get(Appointment, appointment_id)
     if not a or a.store_id != ctx.store_id:
         raise HTTPException(404, "No encontrada")
-    prev = {"status": a.status, "notes": a.notes, "charged_price_cents": a.charged_price_cents}
+    prev = {
+        "status": a.status,
+        "notes": a.notes,
+        "charged_price_cents": a.charged_price_cents,
+        "station_id": a.station_id,
+    }
     if data.charged_price_cents is not None:
         a.charged_price_cents = data.charged_price_cents
     if data.status is not None:
         a.status = data.status
     if data.notes is not None:
         a.notes = data.notes
+    patch_fields = data.model_dump(exclude_unset=True)
+    if "station_id" in patch_fields:
+        sid_raw = patch_fields["station_id"]
+        if sid_raw is None:
+            a.station_id = None
+        else:
+            sid = str(sid_raw).strip()
+            if not sid:
+                a.station_id = None
+            else:
+                ws = await db.get(WorkStation, sid)
+                if not ws or ws.store_id != ctx.store_id or ws.branch_id != a.branch_id:
+                    raise HTTPException(400, "Puesto inválido para la sede de esta cita")
+                if not await station_time_free(db, ws.id, a.start_time, a.end_time, exclude_appointment_id=a.id):
+                    raise HTTPException(400, "Ese puesto ya está ocupado en ese horario")
+                a.station_id = ws.id
 
     if a.status == AppointmentStatus.COMPLETED.value:
         svc = await db.get(Service, a.service_id)
@@ -1043,6 +1277,7 @@ async def patch_appointment(
                 "status": a.status,
                 "notes": a.notes,
                 "charged_price_cents": a.charged_price_cents,
+                "station_id": a.station_id,
                 "session_closed_at": a.session_closed_at.isoformat() if a.session_closed_at else None,
             },
         },
@@ -1052,6 +1287,7 @@ async def patch_appointment(
         "status": a.status,
         "charged_price_cents": a.charged_price_cents,
         "ticket_id": a.ticket_id,
+        "station_id": a.station_id,
     }
 
 
