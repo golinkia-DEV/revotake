@@ -10,6 +10,7 @@ from app.models.scheduling import (
     AvailabilityRule,
     AvailabilityRuleType,
     WaitlistEntry,  # noqa: F401 — registra tabla en metadata
+    AppointmentReview,  # noqa: F401 — registra tabla en metadata
 )
 from app.models.client_document import ClientDocument  # noqa: F401 — registro en metadata
 from app.models.store import StoreMemberRole
@@ -284,8 +285,22 @@ async def _migrate_meetings_store_id():
         async with engine.begin() as conn:
             await conn.execute(
                 text(
-                    "ALTER TABLE meetings ADD CONSTRAINT meetings_store_id_fkey "
-                    "FOREIGN KEY (store_id) REFERENCES stores (id)"
+                    """
+                    DO $body$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        JOIN pg_namespace n ON n.oid = t.relnamespace
+                        WHERE n.nspname = 'public' AND t.relname = 'meetings'
+                          AND c.conname = 'meetings_store_id_fkey'
+                      ) THEN
+                        ALTER TABLE meetings ADD CONSTRAINT meetings_store_id_fkey
+                        FOREIGN KEY (store_id) REFERENCES stores (id);
+                      END IF;
+                    END
+                    $body$;
+                    """
                 )
             )
     except Exception as e:
@@ -387,14 +402,26 @@ async def _migrate_scheduling_operations_extensions():
             await conn.execute(
                 text(
                     """
-                    ALTER TABLE scheduling_services
-                    ADD CONSTRAINT scheduling_services_product_id_fkey
-                    FOREIGN KEY (product_id) REFERENCES products(id)
+                    DO $body$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint c
+                        JOIN pg_class t ON t.oid = c.conrelid
+                        JOIN pg_namespace n ON n.oid = t.relnamespace
+                        WHERE n.nspname = 'public' AND t.relname = 'scheduling_services'
+                          AND c.conname = 'scheduling_services_product_id_fkey'
+                      ) THEN
+                        ALTER TABLE scheduling_services
+                        ADD CONSTRAINT scheduling_services_product_id_fkey
+                        FOREIGN KEY (product_id) REFERENCES products(id);
+                      END IF;
+                    END
+                    $body$;
                     """
                 )
             )
     except Exception as e:
-        print("Aviso FK scheduling_services.product_id (puede existir):", e)
+        print("Aviso FK scheduling_services.product_id:", e)
     for idx_sql in (
         "CREATE INDEX IF NOT EXISTS ix_appt_store_status_end ON appointments (store_id, status, end_time);",
         "CREATE INDEX IF NOT EXISTS ix_appt_store_start_status ON appointments (store_id, start_time, status);",

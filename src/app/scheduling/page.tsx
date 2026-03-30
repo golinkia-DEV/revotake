@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Calendar, ExternalLink, BarChart3, ClipboardList, Download } from "lucide-react";
+import { Calendar, ExternalLink, BarChart3, ClipboardList, Download, Star } from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { getStoreId } from "@/lib/store";
@@ -26,6 +26,12 @@ export default function SchedulingAdminPage() {
   const { data: appts } = useQuery({
     queryKey: ["scheduling-appointments"],
     queryFn: () => api.get("/scheduling/appointments").then((r) => r.data),
+    enabled: !!storeId,
+  });
+
+  const { data: reviews } = useQuery({
+    queryKey: ["scheduling-reviews"],
+    queryFn: () => api.get("/scheduling/reviews").then((r) => r.data),
     enabled: !!storeId,
   });
 
@@ -97,6 +103,70 @@ export default function SchedulingAdminPage() {
           <p className="text-xs text-slate-500">Confirmadas: {dash?.confirmed ?? "—"}</p>
         </motion.div>
       </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+        className="mb-8 rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/90 to-white p-5 dark:border-amber-900/50 dark:from-amber-950/40 dark:to-slate-900/80"
+      >
+        <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-amber-100">
+          <Star className="h-5 w-5 text-amber-500" fill="currentColor" />
+          Calificaciones de clientes
+        </div>
+        {reviews?.store?.count > 0 && reviews?.store?.average != null ? (
+          <>
+            <p className="text-2xl font-extrabold text-on-surface">
+              {reviews.store.average.toFixed(1)}
+              <span className="ml-2 text-lg font-semibold text-amber-500">★</span>
+              <span className="ml-2 text-sm font-normal text-slate-500">
+                ({reviews.store.count} {reviews.store.count === 1 ? "opinión" : "opiniones"})
+              </span>
+            </p>
+            {Array.isArray(reviews.by_professional) && reviews.by_professional.length > 0 && (
+              <div className="mt-4 border-t border-amber-200/60 pt-3 dark:border-amber-900/40">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Por profesional
+                </p>
+                <ul className="max-h-36 space-y-1.5 overflow-y-auto text-sm">
+                  {(reviews.by_professional as { professional_id: string; name: string; average: number; count: number }[]).map(
+                    (row) => (
+                      <li key={row.professional_id} className="flex justify-between gap-2 text-slate-700 dark:text-slate-200">
+                        <span className="min-w-0 truncate font-medium">{row.name || "Profesional"}</span>
+                        <span className="shrink-0">
+                          {row.average?.toFixed(1) ?? "—"} ★ · {row.count}
+                        </span>
+                      </li>
+                    )
+                  )}
+                </ul>
+              </div>
+            )}
+            {reviews.items?.length > 0 && (
+              <div className="mt-4 border-t border-amber-200/60 pt-3 dark:border-amber-900/40">
+                <p className="mb-2 text-xs font-semibold text-slate-500">Últimas opiniones</p>
+                <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-300">
+                  {reviews.items.slice(0, 5).map((it: { id: string; rating: number; comment: string | null; professional_name: string; created_at: string }) => (
+                    <li key={it.id} className="rounded-lg bg-white/60 p-2 dark:bg-slate-950/50">
+                      <span className="font-semibold text-amber-600">{"★".repeat(it.rating)}</span>{" "}
+                      <span className="text-slate-500">{it.professional_name}</span>
+                      {it.comment && <p className="mt-1 text-slate-700 dark:text-slate-200">{it.comment}</p>}
+                      <p className="mt-0.5 text-[10px] text-slate-400">
+                        {new Date(it.created_at).toLocaleString("es-CL")}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Aún no hay calificaciones. Los clientes pueden opinar desde el enlace de gestión de su cita, después del horario
+            de atención.
+          </p>
+        )}
+      </motion.div>
 
       <div className="mb-6 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-lg font-bold text-on-surface">

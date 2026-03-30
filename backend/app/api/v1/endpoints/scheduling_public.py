@@ -20,6 +20,7 @@ from app.models.scheduling import (
     AppointmentStatus,
     PaymentMode,
     WaitlistEntry,
+    AppointmentReview,
 )
 from app.services.scheduling_availability import compute_slots
 from app.services.scheduling_booking import (
@@ -65,6 +66,44 @@ async def public_meta(store_slug: str, db: AsyncSession = Depends(get_db)):
         "slug": store.slug,
         "logo_url": logo_url,
         "public": public_block,
+    }
+
+
+@router.get("/{store_slug}/ratings-summary")
+async def public_ratings_summary(store_slug: str, db: AsyncSession = Depends(get_db)):
+    """Promedio de estrellas de la tienda y por profesional (reserva pública)."""
+    store = await _store_by_slug(db, store_slug)
+    r = await db.execute(
+        select(func.avg(AppointmentReview.rating), func.count(AppointmentReview.id)).where(
+            AppointmentReview.store_id == store.id
+        )
+    )
+    row = r.one()
+    store_avg = float(row[0]) if row[0] is not None else None
+    store_count = int(row[1] or 0)
+
+    r2 = await db.execute(
+        select(
+            AppointmentReview.professional_id,
+            func.avg(AppointmentReview.rating),
+            func.count(AppointmentReview.id),
+        )
+        .where(AppointmentReview.store_id == store.id)
+        .group_by(AppointmentReview.professional_id)
+    )
+    by_prof: dict = {}
+    for pid, av, cnt in r2.all():
+        by_prof[pid] = {
+            "average": round(float(av), 2) if av is not None else None,
+            "count": int(cnt or 0),
+        }
+
+    return {
+        "store": {
+            "average": round(store_avg, 2) if store_avg is not None else None,
+            "count": store_count,
+        },
+        "by_professional": by_prof,
     }
 
 
@@ -139,7 +178,35 @@ async def public_professionals(
     )
     r = await db.execute(q)
     pros = r.scalars().unique().all()
-    return {"items": [{"id": p.id, "name": p.name, "email": p.email} for p in pros]}
+    pids = [p.id for p in pros]
+    agg: dict[str, tuple[float | None, int]] = {}
+    if pids:
+        r_agg = await db.execute(
+            select(
+                AppointmentReview.professional_id,
+                func.avg(AppointmentReview.rating),
+                func.count(AppointmentReview.id),
+            )
+            .where(
+                AppointmentReview.store_id == store.id,
+                AppointmentReview.professional_id.in_(pids),
+            )
+            .group_by(AppointmentReview.professional_id)
+        )
+        for pid, av, cnt in r_agg.all():
+            agg[pid] = (float(av) if av is not None else None, int(cnt or 0))
+
+    def _prof_item(p: Professional) -> dict:
+        av, cnt = agg.get(p.id, (None, 0))
+        return {
+            "id": p.id,
+            "name": p.name,
+            "email": p.email,
+            "rating_average": round(av, 2) if av is not None else None,
+            "rating_count": cnt,
+        }
+
+    return {"items": [_prof_item(p) for p in pros]}
 
 
 @router.get("/{store_slug}/slots")
@@ -257,16 +324,36 @@ async def public_manage_get(manage_token: str, db: AsyncSession = Depends(get_db
     svc = await db.get(Service, appt.service_id)
     prof = await db.get(Professional, appt.professional_id)
     br = await db.get(Branch, appt.branch_id)
+    now = datetime.utcnow()
+    past_visit = appt.end_time <= now
+    cancellable_status = appt.status != AppointmentStatus.CANCELLED.value
+    existing = (
+        await db.execute(select(AppointmentReview).where(AppointmentReview.appointment_id == appt.id))
+    ).scalar_one_or_none()
+    can_submit_review = bool(cancellable_status and past_visit and existing is None)
+
+    review_payload = None
+    if existing:
+        review_payload = {
+            "rating": existing.rating,
+            "comment": existing.comment,
+            "created_at": existing.created_at.isoformat(),
+        }
+
     return {
         "id": appt.id,
         "status": appt.status,
         "start_time": appt.start_time.isoformat(),
         "end_time": appt.end_time.isoformat(),
         "service": {"name": svc.name if svc else ""},
-        "professional": {"name": prof.name if prof else ""},
+        "professional": {"id": prof.id if prof else None, "name": prof.name if prof else ""},
         "branch": {"name": br.name if br else ""},
         "payment_mode": appt.payment_mode,
         "payment_status": appt.payment_status,
+        "review": {
+            "can_submit": can_submit_review,
+            "existing": review_payload,
+        },
     }
 
 
@@ -308,6 +395,46 @@ async def public_manage_cancel(manage_token: str, db: AsyncSession = Depends(get
         "policy_violated": result["policy_violated"],
         "cancellation_fee_message": result["cancellation_fee_message"],
     }
+
+
+class PublicReviewCreate(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = Field(None, max_length=500)
+
+
+@router.post("/manage/{manage_token}/review")
+async def public_manage_submit_review(
+    manage_token: str,
+    data: PublicReviewCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """El cliente califica la visita usando el enlace de gestión (después de la hora de fin de la cita)."""
+    r = await db.execute(select(Appointment).where(Appointment.manage_token == manage_token))
+    appt = r.scalar_one_or_none()
+    if not appt:
+        raise HTTPException(404, "Cita no encontrada")
+    if appt.status == AppointmentStatus.CANCELLED.value:
+        raise HTTPException(400, "No se puede calificar una cita cancelada")
+    if appt.end_time > datetime.utcnow():
+        raise HTTPException(400, "Podés calificar después de la hora de término de la cita")
+
+    dup = (
+        await db.execute(select(AppointmentReview).where(AppointmentReview.appointment_id == appt.id))
+    ).scalar_one_or_none()
+    if dup:
+        raise HTTPException(400, "Ya enviaste una calificación para esta cita")
+
+    comment = (data.comment or "").strip() or None
+    rev = AppointmentReview(
+        appointment_id=appt.id,
+        store_id=appt.store_id,
+        professional_id=appt.professional_id,
+        rating=data.rating,
+        comment=comment,
+    )
+    db.add(rev)
+    await db.flush()
+    return {"ok": True, "rating": rev.rating, "comment": rev.comment}
 
 
 class WaitlistJoinRequest(BaseModel):

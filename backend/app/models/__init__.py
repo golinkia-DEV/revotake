@@ -17,6 +17,7 @@ from app.models.scheduling import (
     Holiday,
     Appointment,
     AppointmentAuditLog,
+    AppointmentReview,
     NotificationJob,
     PaymentAttempt,
     AvailabilityRuleType,

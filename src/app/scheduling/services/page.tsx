@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
@@ -16,7 +24,9 @@ import {
   Plus,
   Search,
   ExternalLink,
+  Sparkles,
   Trash2,
+  X,
 } from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
@@ -79,6 +89,21 @@ function mergeServerOrder(items: ServiceRow[], prev: Record<string, string[]>): 
     out[k] = [...prevIds, ...missing];
   }
   return out;
+}
+
+function computeMenuSortForSave(
+  isEdit: boolean,
+  initial: ServiceRow | null,
+  categoryTrim: string,
+  orderMap: Record<string, string[]>
+): number {
+  const ck = categoryKey(categoryTrim || null);
+  const ids = orderMap[ck] ?? [];
+  if (isEdit && initial) {
+    const i = ids.indexOf(initial.id);
+    if (i >= 0) return i;
+  }
+  return ids.length;
 }
 
 function rowMatches(
@@ -278,6 +303,8 @@ export default function SchedulingServicesMenuPage() {
 
   const inactiveCount = useMemo(() => items.filter((s) => !s.is_active).length, [items]);
 
+  const panelOpen = !!(showForm || editing);
+
   return (
     <AppLayout>
       <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
@@ -471,7 +498,7 @@ export default function SchedulingServicesMenuPage() {
         </p>
       )}
 
-      {canReorder ? (
+      {!panelOpen && canReorder ? (
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="space-y-4">
             {visibleCategoryKeys.map((key) => (
@@ -530,15 +557,28 @@ export default function SchedulingServicesMenuPage() {
       </p>
 
       <AnimatePresence>
-        {(showForm || editing) && storeId && (
-          <ServiceFormModal
-            key={editing?.id ?? "create"}
+        {panelOpen && storeId && (
+          <ServiceEditorPanel
+            key="editor"
             initial={editing}
+            creating={showForm && !editing}
             storeId={storeId}
             queryClient={qc}
+            categoryKeysOrdered={categoryKeysOrdered}
+            orderMap={orderMap}
+            itemById={itemById}
+            onDragEnd={onDragEnd}
             onClose={() => {
               setShowForm(false);
               setEditing(null);
+            }}
+            onSelectService={(s) => {
+              setShowForm(false);
+              setEditing(s);
+            }}
+            onNew={() => {
+              setEditing(null);
+              setShowForm(true);
             }}
           />
         )}
@@ -863,30 +903,129 @@ function ServiceStaticRow({ service: s, onEdit }: { service: ServiceRow; onEdit:
   );
 }
 
-function ServiceFormModal({
+function DockServiceRow({
+  service: s,
+  index,
+  selected,
+  onPick,
+}: {
+  service: ServiceRow;
+  index: number;
+  selected: boolean;
+  onPick: () => void;
+}) {
+  return (
+    <Draggable draggableId={s.id} index={index}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          className={clsx(
+            "mb-1 flex items-stretch gap-0.5 rounded-xl border bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/80",
+            selected && "border-blue-500 ring-2 ring-blue-500/40",
+            snapshot.isDragging && "border-blue-400 shadow-lg dark:border-blue-600",
+            !s.is_active && "opacity-75"
+          )}
+        >
+          <button
+            type="button"
+            {...provided.dragHandleProps}
+            className="flex w-10 shrink-0 items-center justify-center rounded-l-xl border-r border-slate-100 text-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            aria-label={`Reordenar: ${s.name}`}
+          >
+            <GripVertical className="h-4 w-4" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={onPick}
+            className="min-w-0 flex-1 px-2 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+          >
+            <p className="truncate text-sm font-semibold text-on-surface">{s.name}</p>
+            <p className="truncate text-xs text-slate-500">
+              {formatPrice(s.price_cents, s.currency)} · {s.duration_minutes} min
+              {!s.is_active ? " · inactivo" : ""}
+            </p>
+          </button>
+        </div>
+      )}
+    </Draggable>
+  );
+}
+
+function ServiceEditorPanel({
   initial,
+  creating,
   storeId,
   queryClient,
+  categoryKeysOrdered,
+  orderMap,
+  itemById,
+  onDragEnd,
   onClose,
+  onSelectService,
+  onNew,
 }: {
   initial: ServiceRow | null;
+  creating: boolean;
   storeId: string;
   queryClient: QueryClient;
+  categoryKeysOrdered: string[];
+  orderMap: Record<string, string[]>;
+  itemById: Map<string, ServiceRow>;
+  onDragEnd: (result: DropResult) => void;
   onClose: () => void;
+  onSelectService: (s: ServiceRow) => void;
+  onNew: () => void;
 }) {
-  const [name, setName] = useState(initial?.name ?? "");
-  const [category, setCategory] = useState(initial?.category ?? "");
-  const [menuSort, setMenuSort] = useState(initial?.menu_sort_order ?? 0);
-  const [description, setDescription] = useState(initial?.description ?? "");
-  const [duration, setDuration] = useState(initial?.duration_minutes ?? 30);
-  const [pricePesos, setPricePesos] = useState(initial ? Math.round(initial.price_cents / 100) : 0);
-  const [isActive, setIsActive] = useState(initial?.is_active ?? true);
-  const [imageUrls, setImageUrls] = useState<string[]>(initial?.image_urls ?? []);
+  const [dockSearch, setDockSearch] = useState("");
+  const [name, setName] = useState("");
+  const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
+  const [duration, setDuration] = useState(30);
+  const [pricePesos, setPricePesos] = useState(0);
+  const [isActive, setIsActive] = useState(true);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
 
-  const isEdit = !!initial;
+  const isEdit = !!initial && !creating;
+
+  useEffect(() => {
+    if (initial && !creating) {
+      setName(initial.name);
+      setCategory(initial.category ?? "");
+      setDescription(initial.description ?? "");
+      setDuration(initial.duration_minutes);
+      setPricePesos(Math.round(initial.price_cents / 100));
+      setIsActive(initial.is_active);
+      setImageUrls(Array.isArray(initial.image_urls) ? initial.image_urls : []);
+      setPendingFiles([]);
+    } else {
+      setName("");
+      setCategory("");
+      setDescription("");
+      setDuration(30);
+      setPricePesos(0);
+      setIsActive(true);
+      setImageUrls([]);
+      setPendingFiles([]);
+    }
+  }, [initial?.id, creating]);
+
+  const dockKeys = useMemo(() => {
+    const q = dockSearch.trim().toLowerCase();
+    if (!q) return categoryKeysOrdered;
+    return categoryKeysOrdered.filter((key) => {
+      const ids = orderMap[key] ?? [];
+      return ids.some((id) => {
+        const s = itemById.get(id);
+        return s && `${s.name} ${s.category ?? ""}`.toLowerCase().includes(q);
+      });
+    });
+  }, [categoryKeysOrdered, orderMap, itemById, dockSearch]);
+
   const canAddMore = imageUrls.length + pendingFiles.length < 5;
 
   async function handlePickImages(e: ChangeEvent<HTMLInputElement>) {
@@ -938,6 +1077,35 @@ function ServiceFormModal({
     setPendingFiles((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  async function suggestDescriptionWithAi() {
+    if (!name.trim()) {
+      toast.error("Escribí el nombre del servicio antes de generar la descripción");
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const r = await api.post("/scheduling/services/suggest-description", {
+        name: name.trim(),
+        category: category.trim() || null,
+        duration_minutes: duration,
+        price_cents: Math.max(0, Math.round(Number(pricePesos) * 100)),
+        currency: "CLP",
+      });
+      const text = (r.data?.description as string | undefined)?.trim();
+      if (text) {
+        setDescription(text);
+        toast.success("Descripción sugerida por IA");
+      } else {
+        toast.error("La IA no devolvió texto");
+      }
+    } catch (err: unknown) {
+      const d = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      toast.error(typeof d === "string" ? d : "No se pudo generar (¿IA configurada y permisos de admin?)");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!name.trim()) {
@@ -946,6 +1114,7 @@ function ServiceFormModal({
     }
     const price_cents = Math.max(0, Math.round(Number(pricePesos) * 100));
     const headers = { "X-Store-Id": storeId };
+    const menu_sort_order = computeMenuSortForSave(isEdit, initial, category, orderMap);
     setSaving(true);
     try {
       if (isEdit && initial) {
@@ -954,7 +1123,7 @@ function ServiceFormModal({
           {
             name: name.trim(),
             category: category.trim() || null,
-            menu_sort_order: menuSort,
+            menu_sort_order,
             description: description.trim() || null,
             duration_minutes: duration,
             price_cents,
@@ -969,7 +1138,7 @@ function ServiceFormModal({
           {
             name: name.trim(),
             category: category.trim() || null,
-            menu_sort_order: menuSort,
+            menu_sort_order,
             description: description.trim() || null,
             duration_minutes: duration,
             price_cents,
@@ -1000,19 +1169,113 @@ function ServiceFormModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      className="fixed inset-0 z-50 flex justify-end bg-black/45 backdrop-blur-[2px]"
       onClick={onClose}
     >
-      <motion.form
-        initial={{ y: 40, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        exit={{ y: 40, opacity: 0 }}
+      <motion.div
+        initial={{ x: 48, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: 48, opacity: 0 }}
+        transition={{ type: "spring", damping: 28, stiffness: 320 }}
         onClick={(e) => e.stopPropagation()}
-        onSubmit={handleSubmit}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        className="flex h-full w-full max-w-5xl flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
       >
-        <h2 className="mb-4 text-lg font-bold text-on-surface">{isEdit ? "Editar servicio" : "Nuevo servicio"}</h2>
-        <div className="space-y-3">
+        <div className="flex h-full min-h-0 flex-col lg:flex-row">
+          <aside className="flex max-h-[42vh] shrink-0 flex-col border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/50 lg:max-h-none lg:w-[min(100%,320px)] lg:border-b-0 lg:border-r">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 dark:border-slate-800">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Catálogo</p>
+                <p className="text-sm font-semibold text-on-surface">Todos los servicios</p>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800"
+                aria-label="Cerrar"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="border-b border-slate-200 p-2 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={onNew}
+                className={clsx(
+                  "mb-2 w-full rounded-xl border-2 border-dashed px-3 py-2.5 text-sm font-semibold transition",
+                  creating
+                    ? "border-blue-500 bg-blue-50 text-blue-800 dark:bg-blue-950/50 dark:text-blue-100"
+                    : "border-slate-300 text-slate-700 hover:border-blue-400 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-900"
+                )}
+              >
+                <Plus className="mr-1 inline h-4 w-4 align-text-bottom" aria-hidden /> Nuevo servicio
+              </button>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={dockSearch}
+                  onChange={(e) => setDockSearch(e.target.value)}
+                  placeholder="Buscar en la lista…"
+                  className="input-field w-full py-2 pl-8 text-sm"
+                  aria-label="Buscar servicio en el panel"
+                />
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              <DragDropContext onDragEnd={onDragEnd}>
+                <div className="space-y-3">
+                  {dockKeys.map((key) => {
+                    const orderedIds = orderMap[key] ?? [];
+                    const rows = orderedIds.map((id) => itemById.get(id)).filter(Boolean) as ServiceRow[];
+                    if (rows.length === 0) return null;
+                    return (
+                      <div key={key}>
+                        <p className="mb-1.5 px-1 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                          {categoryTitle(key)}
+                        </p>
+                        <Droppable droppableId={key}>
+                          {(provided, snap) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.droppableProps}
+                              className={clsx(
+                                "rounded-xl p-1 transition-colors",
+                                snap.isDraggingOver && "bg-blue-50/90 dark:bg-blue-950/40"
+                              )}
+                            >
+                              {rows.map((s, index) => (
+                                <DockServiceRow
+                                  key={s.id}
+                                  service={s}
+                                  index={index}
+                                  selected={!creating && initial?.id === s.id}
+                                  onPick={() => onSelectService(s)}
+                                />
+                              ))}
+                              {provided.placeholder}
+                            </div>
+                          )}
+                        </Droppable>
+                      </div>
+                    );
+                  })}
+                </div>
+              </DragDropContext>
+            </div>
+            <p className="border-t border-slate-200 px-3 py-2 text-[10px] leading-snug text-slate-500 dark:border-slate-800">
+              Arrastrá con ⋮⋮ para ordenar o cambiar de categoría soltando en otra sección.
+            </p>
+          </aside>
+
+          <main className="flex min-h-0 flex-1 flex-col">
+            <div className="border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+              <h2 className="text-xl font-bold text-on-surface">{isEdit ? "Editar servicio" : "Nuevo servicio"}</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {isEdit ? "Cambios locales hasta que guardés." : "Completá los datos y guardá para publicarlo."}
+              </p>
+            </div>
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
           <input
             className="input-field w-full"
             value={name}
@@ -1026,18 +1289,8 @@ function ServiceFormModal({
             onChange={(e) => setCategory(e.target.value)}
             placeholder="Categoría del menú (opcional)"
           />
-          <p className="text-[11px] text-slate-500">Mismo texto = misma sección al agrupar (cualquier negocio).</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Orden en menú</label>
-              <input
-                type="number"
-                className="input-field w-full"
-                value={menuSort}
-                onChange={(e) => setMenuSort(parseInt(e.target.value, 10) || 0)}
-                min={0}
-              />
-            </div>
+          <p className="text-[11px] text-slate-500">Mismo texto = misma sección que en la columna izquierda.</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Duración (min)</label>
               <input
@@ -1049,26 +1302,43 @@ function ServiceFormModal({
                 step={5}
               />
             </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Precio (pesos)</label>
+              <input
+                type="number"
+                className="input-field w-full"
+                value={pricePesos}
+                onChange={(e) => setPricePesos(parseInt(e.target.value, 10) || 0)}
+                min={0}
+              />
+            </div>
           </div>
           <p className="text-[11px] text-slate-500">
-            Tip: también podés ordenar arrastrando en el menú principal (vista <strong>Todos</strong>).
+            El orden en el menú lo definís arrastrando filas en la columna izquierda (misma categoría o entre categorías).
           </p>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Precio (pesos)</label>
-            <input
-              type="number"
-              className="input-field w-full"
-              value={pricePesos}
-              onChange={(e) => setPricePesos(parseInt(e.target.value, 10) || 0)}
-              min={0}
+            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Descripción breve</label>
+              <button
+                type="button"
+                onClick={() => void suggestDescriptionWithAi()}
+                disabled={aiLoading || saving || !name.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-800 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-100 dark:hover:bg-violet-900/60"
+              >
+                {aiLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden />}
+                Generar con IA
+              </button>
+            </div>
+            <textarea
+              className="input-field min-h-[100px] w-full resize-y"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Texto que verán en la reserva pública (opcional). Usá «Generar con IA» como punto de partida."
             />
+            <p className="mt-1 text-[11px] text-slate-500">
+              La IA usa nombre, categoría, duración, precio y el contexto de tu tienda (Configuración → IA). Revisá siempre el texto antes de publicar.
+            </p>
           </div>
-          <textarea
-            className="input-field min-h-[80px] w-full resize-y"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Descripción breve (opcional)"
-          />
           <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
             <p className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-400">
               <ImageIcon className="h-4 w-4 shrink-0" /> Fotos (máx. 5 · JPG, PNG o WebP)
@@ -1127,25 +1397,28 @@ function ServiceFormModal({
               Activo en reserva pública
             </label>
           )}
+              </div>
+              <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-slate-50/90 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/80">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="min-h-[44px] rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving || uploading}
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isEdit ? "Guardar cambios" : "Crear servicio"}
+                </button>
+              </div>
+            </form>
+          </main>
         </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-[44px] rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:hover:bg-slate-800"
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            disabled={saving || uploading}
-            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {isEdit ? "Guardar" : "Crear"}
-          </button>
-        </div>
-      </motion.form>
+      </motion.div>
     </motion.div>
   );
 }

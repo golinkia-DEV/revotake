@@ -250,6 +250,25 @@ class PaymentAttempt(Base):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class AppointmentReview(Base):
+    """Calificación del cliente tras la cita (una por cita). Alimenta promedios de tienda y profesional."""
+
+    __tablename__ = "appointment_reviews"
+    __table_args__ = (
+        UniqueConstraint("appointment_id", name="uq_appointment_review_appt"),
+        Index("ix_appt_review_store", "store_id"),
+        Index("ix_appt_review_professional", "professional_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    appointment_id: Mapped[str] = mapped_column(ForeignKey("appointments.id"), nullable=False)
+    store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
+    professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
+    rating: Mapped[int] = mapped_column(Integer)
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class WaitlistEntry(Base):
     """Cliente en lista de espera para un slot específico de profesional+servicio+fecha."""
     __tablename__ = "waitlist_entries"

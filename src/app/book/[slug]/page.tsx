@@ -69,6 +69,52 @@ function formatPrice(cents: number, currency: string) {
   return `${(cents / 100).toLocaleString("es-CL")} ${currency}`;
 }
 
+function StarsBlock({
+  average,
+  count,
+  className = "",
+}: {
+  average: number | null | undefined;
+  count: number;
+  className?: string;
+}) {
+  if (!count || average == null) return null;
+  const filled = Math.min(5, Math.max(0, Math.round(average)));
+  const label = `${average.toFixed(1)} de 5 estrellas, ${count} ${count === 1 ? "opinión" : "opiniones"}`;
+  return (
+    <div className={className} role="img" aria-label={label}>
+      <div className="flex items-center justify-center gap-0.5">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <span
+            key={i}
+            className={
+              i < filled ? "text-lg text-amber-500" : "text-lg text-slate-200 dark:text-slate-600"
+            }
+          >
+            ★
+          </span>
+        ))}
+      </div>
+      <p className="mt-1 text-center text-xs font-medium text-slate-600 dark:text-slate-300">
+        {average.toFixed(1)} · {count} {count === 1 ? "opinión" : "opiniones"}
+      </p>
+    </div>
+  );
+}
+
+function StarsInline({ average, count }: { average: number | null | undefined; count: number }) {
+  if (!count || average == null) {
+    return <span className="text-[11px] text-slate-400">Sin calificaciones</span>;
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-amber-500" title={`${average.toFixed(1)} / 5 (${count})`}>
+      <span className="text-sm">★</span>
+      <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{average.toFixed(1)}</span>
+      <span className="text-[10px] text-slate-400">({count})</span>
+    </span>
+  );
+}
+
 function CancellationPolicyBadge({ hours, feeCents, currency }: { hours: number; feeCents: number; currency: string }) {
   if (!hours) return null;
   return (
@@ -198,6 +244,11 @@ export default function PublicBookPage() {
   const meta = useQuery({
     queryKey: ["pub-meta", slug],
     queryFn: () => publicApi.get(`/public/scheduling/${slug}/meta`).then((r) => r.data),
+    enabled: !!slug,
+  });
+  const ratings = useQuery({
+    queryKey: ["pub-ratings", slug],
+    queryFn: () => publicApi.get(`/public/scheduling/${slug}/ratings-summary`).then((r) => r.data),
     enabled: !!slug,
   });
   const services = useQuery({
@@ -361,6 +412,9 @@ export default function PublicBookPage() {
           <h1 className="text-2xl font-extrabold text-slate-900 dark:text-white">
             {meta.data?.name ?? "Reservar"}
           </h1>
+          {ratings.data?.store && ratings.data.store.count > 0 && ratings.data.store.average != null && (
+            <StarsBlock average={ratings.data.store.average} count={ratings.data.store.count} className="mt-3" />
+          )}
           <p className="mt-2 text-sm text-slate-500">Elegí servicio, sucursal, profesional y horario.</p>
         </div>
 
@@ -569,20 +623,32 @@ export default function PublicBookPage() {
                 <p className="text-sm text-amber-700">No hay profesionales para esta combinación.</p>
               )}
               <div className="space-y-2">
-                {professionals.data?.items?.map((p: { id: string; name: string }) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      setProfessionalId(p.id);
-                      setStep(4);
-                    }}
-                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-medium transition hover:border-blue-500 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
-                  >
-                    {p.name}
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                  </button>
-                ))}
+                {professionals.data?.items?.map(
+                  (p: {
+                    id: string;
+                    name: string;
+                    rating_average?: number | null;
+                    rating_count?: number;
+                  }) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setProfessionalId(p.id);
+                        setStep(4);
+                      }}
+                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-medium transition hover:border-blue-500 hover:bg-blue-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{p.name}</span>
+                        <span className="mt-0.5 block">
+                          <StarsInline average={p.rating_average ?? null} count={p.rating_count ?? 0} />
+                        </span>
+                      </span>
+                      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                    </button>
+                  )
+                )}
               </div>
               <button type="button" onClick={() => setStep(2)} className="text-sm text-blue-600 hover:underline">
                 Volver

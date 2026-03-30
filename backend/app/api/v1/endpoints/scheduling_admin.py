@@ -44,6 +44,7 @@ from app.models.scheduling import (
     PaymentMode,
     PaymentStatus,
     AppointmentAuditLog,
+    AppointmentReview,
     PaymentAttempt,
     PaymentAttemptStatus,
     WaitlistEntry,
@@ -305,6 +306,64 @@ async def create_service(
     db.add(s)
     await db.flush()
     return {"id": s.id, "slug": s.slug}
+
+
+class ServiceDescriptionSuggest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    category: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    price_cents: Optional[int] = None
+    currency: str = "CLP"
+
+
+@router.post("/services/suggest-description")
+async def suggest_service_description(
+    data: ServiceDescriptionSuggest,
+    ctx: StoreContext = Depends(require_store_admin),
+):
+    """Genera una descripción breve para la ficha del servicio (reserva pública). Requiere ANTHROPIC_API_KEY."""
+    from app.core.config import settings
+    import anthropic
+
+    if not settings.ANTHROPIC_API_KEY:
+        raise HTTPException(400, "Configurá ANTHROPIC_API_KEY en el servidor para usar la IA")
+    st = ctx.store.settings or {}
+    ai_cfg = st.get("ai") or {}
+    business_ctx = (ai_cfg.get("business_context") or "").strip()[:3000]
+    store_name = ctx.store.name or "la tienda"
+    cat = (data.category or "").strip() or "sin categoría específica"
+    dur = f"{data.duration_minutes} minutos" if data.duration_minutes else "duración no indicada"
+    if data.price_cents is not None and data.price_cents > 0:
+        price_txt = f"{data.price_cents / 100:.0f} {data.currency}"
+    elif data.price_cents == 0:
+        price_txt = "gratis o sin cargo indicado"
+    else:
+        price_txt = "precio no indicado"
+    user_prompt = (
+        f"Nombre del servicio: {data.name.strip()}\n"
+        f"Categoría del menú: {cat}\n"
+        f"Duración: {dur}\n"
+        f"Precio: {price_txt}\n\n"
+        "Redactá SOLO el texto de la descripción, sin títulos ni comillas."
+    )
+    system = f"""Eres redactor para fichas de reserva online de «{store_name}».
+Escribís descripciones breves en español (Chile/latino neutro): claras, amables y sin exagerar beneficios médicos o legales.
+Máximo 350 caracteres. Sin markdown, sin emojis, sin listas con viñetas. Uno o dos párrafos cortos o un solo párrafo.
+Si hay contexto del negocio, podés alinear el tono (sin inventar servicios que no fueron pedidos).
+
+Contexto del negocio (puede estar vacío):
+{business_ctx or "(no configurado)"}"""
+    client_sdk = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    response = client_sdk.messages.create(
+        model=settings.ANTHROPIC_MODEL,
+        max_tokens=400,
+        system=system,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    text = (response.content[0].text if response.content else "").strip()
+    if len(text) > 600:
+        text = text[:597] + "..."
+    return {"description": text}
 
 
 class ServicePatch(BaseModel):
@@ -616,6 +675,87 @@ async def list_appointments(
             }
         )
     return {"items": out}
+
+
+@router.get("/reviews")
+async def list_reviews_and_stats(
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
+    limit: int = Query(40, le=100),
+):
+    """Resumen de estrellas (tienda y por profesional) y últimas opiniones de clientes."""
+    r_store = await db.execute(
+        select(func.avg(AppointmentReview.rating), func.count(AppointmentReview.id)).where(
+            AppointmentReview.store_id == ctx.store_id
+        )
+    )
+    arow = r_store.one()
+    store_avg = float(arow[0]) if arow[0] is not None else None
+    store_count = int(arow[1] or 0)
+
+    r2 = await db.execute(
+        select(
+            AppointmentReview.professional_id,
+            func.avg(AppointmentReview.rating),
+            func.count(AppointmentReview.id),
+        )
+        .where(AppointmentReview.store_id == ctx.store_id)
+        .group_by(AppointmentReview.professional_id)
+    )
+    by_prof: dict = {}
+    for pid, av, cnt in r2.all():
+        by_prof[pid] = {
+            "average": round(float(av), 2) if av is not None else None,
+            "count": int(cnt or 0),
+        }
+
+    prof_names: dict[str, str] = {}
+    if by_prof:
+        prn = await db.execute(select(Professional).where(Professional.id.in_(list(by_prof.keys()))))
+        for p in prn.scalars().all():
+            prof_names[p.id] = p.name or ""
+
+    by_professional_list = [
+        {
+            "professional_id": pid,
+            "name": prof_names.get(pid, ""),
+            **stats,
+        }
+        for pid, stats in by_prof.items()
+    ]
+    by_professional_list.sort(key=lambda x: -(x.get("count") or 0))
+
+    r_items = await db.execute(
+        select(AppointmentReview, Appointment, Professional.name, Service.name)
+        .join(Appointment, Appointment.id == AppointmentReview.appointment_id)
+        .join(Professional, Professional.id == AppointmentReview.professional_id)
+        .join(Service, Service.id == Appointment.service_id)
+        .where(AppointmentReview.store_id == ctx.store_id)
+        .order_by(AppointmentReview.created_at.desc())
+        .limit(limit)
+    )
+    items = []
+    for rev, appt, pname, sname in r_items.all():
+        items.append(
+            {
+                "id": rev.id,
+                "rating": rev.rating,
+                "comment": rev.comment,
+                "created_at": rev.created_at.isoformat(),
+                "professional_name": pname or "",
+                "service_name": sname or "",
+                "appointment_start": appt.start_time.isoformat(),
+            }
+        )
+
+    return {
+        "store": {
+            "average": round(store_avg, 2) if store_avg is not None else None,
+            "count": store_count,
+        },
+        "by_professional": by_professional_list,
+        "items": items,
+    }
 
 
 @router.post("/appointments")

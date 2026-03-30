@@ -4,20 +4,39 @@ import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { Calendar, Loader2 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { API_URL } from "@/lib/api";
 import Link from "next/link";
 
 const publicApi = axios.create({ baseURL: API_URL });
 
+type ManageData = {
+  id: string;
+  status: string;
+  start_time: string;
+  end_time: string;
+  service: { name: string };
+  professional: { id: string | null; name: string };
+  branch: { name: string };
+  payment_mode: string;
+  payment_status: string;
+  review: {
+    can_submit: boolean;
+    existing: { rating: number; comment: string | null; created_at: string } | null;
+  };
+};
+
 export default function ManageBookingPage() {
   const params = useParams();
   const token = params.token as string;
   const qc = useQueryClient();
+  const [ratingPick, setRatingPick] = useState<number | null>(null);
+  const [comment, setComment] = useState("");
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["pub-manage", token],
-    queryFn: () => publicApi.get(`/public/scheduling/manage/${token}`).then((r) => r.data),
+    queryFn: () => publicApi.get(`/public/scheduling/manage/${token}`).then((r) => r.data as ManageData),
     enabled: !!token,
   });
 
@@ -33,6 +52,24 @@ export default function ManageBookingPage() {
       qc.invalidateQueries({ queryKey: ["pub-manage", token] });
     },
     onError: () => toast.error("No se pudo cancelar"),
+  });
+
+  const submitReview = useMutation({
+    mutationFn: () =>
+      publicApi.post(`/public/scheduling/manage/${token}/review`, {
+        rating: ratingPick,
+        comment: comment.trim() || null,
+      }),
+    onSuccess: () => {
+      toast.success("¡Gracias por tu calificación!");
+      setRatingPick(null);
+      setComment("");
+      qc.invalidateQueries({ queryKey: ["pub-manage", token] });
+    },
+    onError: (e: unknown) => {
+      const msg = axios.isAxiosError(e) ? e.response?.data?.detail : null;
+      toast.error(typeof msg === "string" ? msg : "No se pudo enviar la calificación");
+    },
   });
 
   if (isLoading) {
@@ -55,6 +92,8 @@ export default function ManageBookingPage() {
   }
 
   const cancelled = data.status === "cancelled";
+  const existing = data.review?.existing;
+  const canSubmit = data.review?.can_submit === true;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 px-4 py-12">
@@ -86,6 +125,67 @@ export default function ManageBookingPage() {
             <dd className="font-medium">{data.status}</dd>
           </div>
         </dl>
+
+        {!cancelled && existing && (
+          <div className="mt-6 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Tu calificación</p>
+            <p className="mt-2 text-amber-700">
+              {"★".repeat(existing.rating)}
+              {"☆".repeat(5 - existing.rating)}
+            </p>
+            {existing.comment && <p className="mt-2 text-sm text-slate-700">{existing.comment}</p>}
+            <p className="mt-2 text-xs text-slate-500">
+              {new Date(existing.created_at).toLocaleString("es-CL")}
+            </p>
+          </div>
+        )}
+
+        {!cancelled && canSubmit && (
+          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+            <p className="text-sm font-semibold text-slate-800">¿Cómo fue tu experiencia?</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Ayudá a otros clientes: calificá al profesional y al servicio. Una opinión por cita.
+            </p>
+            <div className="mt-3 flex justify-center gap-1" role="group" aria-label="Estrellas del 1 al 5">
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setRatingPick(n)}
+                  className={`rounded-lg px-2 py-1 text-2xl transition ${
+                    ratingPick != null && n <= ratingPick ? "text-amber-500" : "text-slate-300 hover:text-amber-300"
+                  }`}
+                  aria-label={`${n} estrellas`}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Comentario opcional (máx. 500 caracteres)"
+              maxLength={500}
+              rows={3}
+              className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              disabled={submitReview.isPending || ratingPick == null}
+              onClick={() => submitReview.mutate()}
+              className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitReview.isPending ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : "Enviar calificación"}
+            </button>
+          </div>
+        )}
+
+        {!cancelled && !canSubmit && !existing && (
+          <p className="mt-6 text-center text-xs text-slate-500">
+            Cuando termine el horario de tu cita podrás dejar una calificación desde este mismo enlace.
+          </p>
+        )}
+
         {!cancelled && (
           <button
             type="button"
