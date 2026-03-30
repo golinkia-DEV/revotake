@@ -30,7 +30,7 @@ function StatCard({
       <div className="flex items-start justify-between">
         <div>
           <p className="mb-1 text-sm text-slate-500">{label}</p>
-          <p className="text-3xl font-extrabold tracking-tight text-on-surface">{value ?? "—"}</p>
+          <p className="text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">{value ?? "—"}</p>
         </div>
         <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${accentClass}`}>
           <Icon className="h-6 w-6 text-white" />
@@ -53,7 +53,7 @@ export default function DashboardPage() {
       <section className="mb-8">
         <div className="mb-6 flex flex-col justify-between gap-6 md:flex-row md:items-end">
           <div>
-            <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Panel principal</h1>
+            <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Panel principal</h1>
             <p className="text-lg text-on-surface-variant">Resumen de operaciones de tu tienda activa.</p>
           </div>
           <div className="flex items-center gap-3 rounded-full border border-slate-100 bg-white px-4 py-2 shadow-sm">

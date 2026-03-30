@@ -184,7 +184,7 @@ export default function CrearProfesionalPage() {
     <AppLayout>
       <div className="mb-8">
         <p className="mb-1 text-xs font-bold uppercase tracking-widest text-slate-400">Agenda</p>
-        <h1 className="mb-2 flex items-center gap-2 text-3xl font-extrabold tracking-tight text-on-surface">
+        <h1 className="mb-2 flex items-center gap-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">
           <UserPlus className="h-8 w-8 text-primary" />
           Crear profesional
         </h1>

@@ -54,7 +54,7 @@ export default function ProductsSedesPage() {
     <AppLayout>
       <div className="mb-8">
         <p className="mb-1 text-xs font-bold uppercase tracking-widest text-primary">Inventario</p>
-        <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Stock por sede</h1>
+        <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Stock por sede</h1>
         <p className="max-w-xl text-sm text-slate-500">
           Resumen de unidades, valor de inventario y ventas de los últimos 30 días por sucursal.
         </p>

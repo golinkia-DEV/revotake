@@ -96,7 +96,7 @@ export default function KanbanPage() {
       <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="mb-1 text-xs font-bold uppercase tracking-widest text-slate-400">Workspace</p>
-          <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">Operaciones</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Operaciones</h1>
           <p className="mt-1 max-w-xl text-slate-600">
             Arrastra <strong>tickets</strong> entre columnas para avanzar el estado. Las etiquetas las configuraste al crear la tienda (o en Tiendas →
             Configuración): cada negocio puede tener su propio vocabulario.
@@ -112,9 +112,9 @@ export default function KanbanPage() {
           </button>
         </div>
       </div>
-      <div className="overflow-x-auto pb-4">
+      <div className="overflow-x-auto pb-4" style={{ WebkitOverflowScrolling: "touch" }}>
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex gap-4" style={{ minWidth: `${columns.length * 280}px` }}>
+          <div className="flex gap-3 md:gap-4" style={{ minWidth: `${columns.length * 260}px` }}>
             {columns.map((col) => (
               <div key={col.id} className="w-64 flex-shrink-0">
                 <div className={clsx("mb-3 rounded-2xl border-t-2 bg-surface-container-low/80 p-3", col.color)}>

@@ -47,7 +47,7 @@ export default function MiProduccionPage() {
   return (
     <AppLayout>
       <div className="mb-8">
-        <h1 className="mb-2 flex items-center gap-2 text-3xl font-extrabold tracking-tight text-on-surface">
+        <h1 className="mb-2 flex items-center gap-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">
           <TrendingUp className="h-8 w-8 text-primary" />
           Mi producción
         </h1>

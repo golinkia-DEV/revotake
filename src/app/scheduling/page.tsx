@@ -54,7 +54,7 @@ export default function SchedulingAdminPage() {
     <AppLayout>
       <div className="mb-8 flex flex-col justify-between gap-6 md:flex-row md:items-end">
         <div>
-          <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Agenda avanzada</h1>
+          <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Agenda avanzada</h1>
           <p className="max-w-xl text-sm text-slate-500">
             Citas para belleza, salud y bienestar: sucursales, profesionales, menú de servicios con fotos, disponibilidad y
             reserva pública. Métricas y export CSV desde la API.

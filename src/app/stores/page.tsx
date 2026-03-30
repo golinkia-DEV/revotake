@@ -308,7 +308,7 @@ export default function StoresPage() {
       <div className="mb-10 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
 
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-on-surface mb-2">Tiendas</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface mb-2">Tiendas</h1>
           <p className="text-slate-500">
             Enfocado en belleza, salud y citas: estética, peluquería, barbería, spa, clínicas, gimnasio y más. Cada local
             tiene su agenda, menú de servicios con fotos, logotipo en reservas y asistente IA.
@@ -766,7 +766,7 @@ export default function StoresPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-10">
         {(stores?.items as StoreItem[] | undefined)?.map((s) => (
-          <motion.div key={s.id} layout className="glass-card-hover p-6 flex flex-col gap-4">
+          <motion.div key={s.id} layout className="glass-card-hover p-4 flex flex-col gap-4 sm:p-6">
             <div className="flex items-start gap-3">
               <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
                 <Building2 className="w-6 h-6 text-primary" />

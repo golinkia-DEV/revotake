@@ -195,7 +195,7 @@ export default function CalendarPage() {
       <div className="mb-8 flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
         <div className="max-w-3xl">
           <p className="mb-1 text-xs font-bold uppercase tracking-widest text-primary">Centro de operaciones</p>
-          <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Agenda</h1>
+          <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Agenda</h1>
           <p className="text-sm text-slate-600">
             Vista unificada de lo que ocurre <strong>hoy</strong> en la tienda: citas con profesional y cliente, reuniones con
             organizador, y tickets Kanban con responsable. Zona horaria: {hub?.timezone ?? "…"}.
@@ -423,36 +423,58 @@ export default function CalendarPage() {
             {hub.active_tickets.length === 0 ? (
               <p className="text-sm text-slate-500">No hay tickets fuera de cerrado.</p>
             ) : (
-              <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700">
-                <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/50">
-                    <tr>
-                      <th className="px-4 py-3">Ticket</th>
-                      <th className="px-4 py-3">Responsable</th>
-                      <th className="px-4 py-3">Estado</th>
-                      <th className="px-4 py-3">Prioridad</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {hub.active_tickets.map((t) => (
-                      <tr key={t.id} className="bg-white dark:bg-slate-900/20">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-on-surface">{t.title}</p>
-                          <p className="text-xs text-slate-500">{t.type}</p>
-                          {t.extra_data?.appointment_id ? (
-                            <p className="mt-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">Vinculado a cita</p>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
-                          {t.assignee_name ? t.assignee_name : <span className="italic text-slate-400">Sin asignar</span>}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">{t.status}</td>
-                        <td className="px-4 py-3 text-slate-600">{t.priority}</td>
+              <>
+                {/* Cards en mobile */}
+                <div className="space-y-2 sm:hidden">
+                  {hub.active_tickets.map((t) => (
+                    <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900/20">
+                      <p className="font-medium text-sm text-on-surface">{t.title}</p>
+                      <p className="text-xs text-slate-500">{t.type}</p>
+                      {t.extra_data?.appointment_id && (
+                        <p className="mt-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">Vinculado a cita</p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">
+                          {t.assignee_name || "Sin asignar"}
+                        </span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">{t.status}</span>
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">{t.priority}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* Tabla en sm+ */}
+                <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 sm:block dark:border-slate-700">
+                  <table className="w-full min-w-[480px] text-left text-sm">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/50">
+                      <tr>
+                        <th className="px-4 py-3">Ticket</th>
+                        <th className="px-4 py-3">Responsable</th>
+                        <th className="px-4 py-3">Estado</th>
+                        <th className="px-4 py-3">Prioridad</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {hub.active_tickets.map((t) => (
+                        <tr key={t.id} className="bg-white dark:bg-slate-900/20">
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-on-surface">{t.title}</p>
+                            <p className="text-xs text-slate-500">{t.type}</p>
+                            {t.extra_data?.appointment_id ? (
+                              <p className="mt-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">Vinculado a cita</p>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                            {t.assignee_name ? t.assignee_name : <span className="italic text-slate-400">Sin asignar</span>}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">{t.status}</td>
+                          <td className="px-4 py-3 text-slate-600">{t.priority}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </section>
         </div>
@@ -587,7 +609,7 @@ export default function CalendarPage() {
 
       {closeAppt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl sm:p-6 dark:bg-slate-900 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <h3 className="text-lg font-bold text-on-surface">Cerrar atención</h3>
             <p className="mt-2 text-sm text-slate-600">
               {closeAppt.client_name} — {closeAppt.service_name}

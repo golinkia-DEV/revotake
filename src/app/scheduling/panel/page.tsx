@@ -101,7 +101,7 @@ export default function SchedulingPanelPage() {
     <AppLayout>
       <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Panel de atención</h1>
+          <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Panel de atención</h1>
           <p className="max-w-2xl text-sm text-slate-500">
             Resumen por trabajador, servicios que más ingresan, clientes recurrentes y alertas cuando falta cerrar una ficha. Al iniciar la hora de la cita se
             abre una ficha en <strong>Operaciones</strong>; al completar la cita podés confirmar o ajustar el monto cobrado (lista vs. precio real en sala).
@@ -255,7 +255,19 @@ export default function SchedulingPanelPage() {
             <motion.div className="glass-card p-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.08 }}>
               <h2 className="mb-3 text-lg font-bold text-on-surface">Por trabajador (90 días)</h2>
               <p className="mb-3 text-xs text-slate-500">Ordenado por ingresos en citas completadas (usa monto cobrado si existe; si no, precio del servicio).</p>
-              <div className="overflow-x-auto">
+              {/* Cards en mobile, tabla en desktop */}
+              <div className="space-y-2 md:hidden">
+                {panel.staff.map((row) => (
+                  <div key={row.professional_id} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2.5 dark:border-slate-800">
+                    <span className="font-medium text-sm text-on-surface">{row.name}</span>
+                    <div className="text-right text-xs text-slate-500">
+                      <p>{row.appointments_count_90d} reservas</p>
+                      <p className="font-semibold text-on-surface">{fmtCLP(row.revenue_cents_completed_90d)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 text-xs text-slate-500">
@@ -280,7 +292,18 @@ export default function SchedulingPanelPage() {
             <motion.div className="glass-card p-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
               <h2 className="mb-3 text-lg font-bold text-on-surface">Servicios / atenciones (más vendidos)</h2>
               <p className="mb-3 text-xs text-slate-500">Solo citas completadas. Vinculá cada servicio a un producto en la API o futura UI de servicios.</p>
-              <div className="overflow-x-auto">
+              <div className="space-y-2 md:hidden">
+                {panel.services_by_revenue.map((row) => (
+                  <div key={row.service_id} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2.5 dark:border-slate-800">
+                    <span className="font-medium text-sm text-on-surface">{row.name}</span>
+                    <div className="text-right text-xs text-slate-500">
+                      <p>{row.completed_count} atenciones</p>
+                      <p className="font-semibold text-on-surface">{fmtCLP(row.revenue_cents)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 text-xs text-slate-500">
@@ -307,7 +330,7 @@ export default function SchedulingPanelPage() {
 
       {closeAppt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl sm:p-6 dark:bg-slate-900 max-h-[calc(100dvh-2rem)] overflow-y-auto">
             <h3 className="text-lg font-bold text-on-surface">Cerrar atención</h3>
             <p className="mt-2 text-sm text-slate-600">
               {closeAppt.client_name} — {closeAppt.service_name}

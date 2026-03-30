@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, Info, CheckCircle, X, Bell, ExternalLink } from "lucide-react";
+import { AlertTriangle, Info, CheckCircle, X, Bell, ExternalLink, Menu } from "lucide-react";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import api from "@/lib/api";
 import Link from "next/link";
@@ -26,12 +26,17 @@ const SEVERITY_STYLES: Record<string, string> = {
 };
 
 function SeverityIcon({ severity }: { severity: string }) {
-  if (severity === "error") return <AlertTriangle className="h-3.5 w-3.5 shrink-0" />;
-  if (severity === "warning") return <AlertTriangle className="h-3.5 w-3.5 shrink-0" />;
+  if (severity === "error" || severity === "warning") return <AlertTriangle className="h-3.5 w-3.5 shrink-0" />;
   return <Info className="h-3.5 w-3.5 shrink-0" />;
 }
 
-export default function TopBar({ searchPlaceholder = "Buscar operaciones, clientes o inventario..." }: { searchPlaceholder?: string }) {
+export default function TopBar({
+  searchPlaceholder = "Buscar…",
+  onMenuClick,
+}: {
+  searchPlaceholder?: string;
+  onMenuClick?: () => void;
+}) {
   const storeId = getStoreId();
   const [showNotif, setShowNotif] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -48,7 +53,6 @@ export default function TopBar({ searchPlaceholder = "Buscar operaciones, client
   const visible = allItems.filter((n) => !dismissed.has(n.id));
   const count = visible.length;
 
-  // Cerrar al click fuera
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -60,24 +64,46 @@ export default function TopBar({ searchPlaceholder = "Buscar operaciones, client
   }, []);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-100 bg-white/80 px-6 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/80">
-      <div className="relative flex max-w-md flex-1 items-center">
-        <MaterialIcon name="search" className="pointer-events-none absolute left-3 text-lg text-slate-400" />
-        <input
-          type="search"
-          className="w-full rounded-full border-none bg-surface-container-low py-2 pl-10 pr-4 text-sm text-on-surface placeholder:text-slate-400 focus:ring-2 focus:ring-primary/20"
-          placeholder={searchPlaceholder}
-          aria-label="Buscar"
-        />
+    <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-slate-100 bg-white/80 px-3 backdrop-blur-md sm:h-16 sm:px-6 dark:border-slate-800 dark:bg-slate-900/80">
+      <div className="flex items-center gap-2">
+        {/* Hamburger — solo visible en mobile */}
+        <button
+          type="button"
+          onClick={onMenuClick}
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-primary md:hidden dark:hover:bg-slate-800"
+          aria-label="Abrir menú"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+
+        {/* Search — oculto en mobile muy pequeño, visible desde sm */}
+        <div className="relative hidden w-full max-w-xs items-center sm:flex md:max-w-md">
+          <MaterialIcon name="search" className="pointer-events-none absolute left-3 text-lg text-slate-400" />
+          <input
+            type="search"
+            className="w-full rounded-full border-none bg-surface-container-low py-2 pl-10 pr-4 text-sm text-on-surface placeholder:text-slate-400 focus:ring-2 focus:ring-primary/20"
+            placeholder={searchPlaceholder}
+            aria-label="Buscar"
+          />
+        </div>
       </div>
 
-      <div className="ml-4 flex items-center gap-2 sm:gap-4">
+      <div className="flex items-center gap-1 sm:gap-2">
+        {/* Search icon en mobile en vez del input */}
+        <button
+          type="button"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 sm:hidden"
+          aria-label="Buscar"
+        >
+          <MaterialIcon name="search" className="text-xl" />
+        </button>
+
         {/* Notificaciones */}
         <div ref={notifRef} className="relative">
           <button
             type="button"
             onClick={() => setShowNotif((v) => !v)}
-            className="relative rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-primary"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-primary"
             aria-label="Notificaciones"
           >
             <Bell className="h-5 w-5" />
@@ -94,7 +120,7 @@ export default function TopBar({ searchPlaceholder = "Buscar operaciones, client
                 initial={{ opacity: 0, y: -8, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                className="absolute right-0 top-12 z-50 w-80 rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+                className="absolute right-0 top-12 z-50 w-[calc(100vw-24px)] max-w-xs rounded-2xl border border-slate-200 bg-white shadow-xl sm:w-80 dark:border-slate-700 dark:bg-slate-900"
               >
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
                   <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Notificaciones</span>
@@ -108,7 +134,7 @@ export default function TopBar({ searchPlaceholder = "Buscar operaciones, client
                     </button>
                   )}
                 </div>
-                <div className="max-h-80 overflow-y-auto p-2">
+                <div className="max-h-72 overflow-y-auto p-2 sm:max-h-80">
                   {visible.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 py-8 text-slate-400">
                       <CheckCircle className="h-8 w-8" />
@@ -121,7 +147,7 @@ export default function TopBar({ searchPlaceholder = "Buscar operaciones, client
                         className={`mb-1.5 flex items-start gap-2 rounded-xl border p-2.5 text-xs ${SEVERITY_STYLES[n.severity]}`}
                       >
                         <SeverityIcon severity={n.severity} />
-                        <div className="flex-1 min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="font-semibold leading-tight">{n.title}</p>
                           <p className="mt-0.5 opacity-80">{n.body}</p>
                           <Link href={n.href} onClick={() => setShowNotif(false)} className="mt-1 inline-flex items-center gap-1 opacity-70 hover:opacity-100">
@@ -140,12 +166,11 @@ export default function TopBar({ searchPlaceholder = "Buscar operaciones, client
           </AnimatePresence>
         </div>
 
-        {/* Ayuda */}
+        {/* Configuración IA */}
         <Link
           href="/settings#ai-context"
-          className="rounded-full p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-primary"
-          aria-label="Configuración IA"
-          title="Configuración IA / Ayuda"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-primary"
+          aria-label="Configuración"
         >
           <MaterialIcon name="help" className="text-xl" />
         </Link>

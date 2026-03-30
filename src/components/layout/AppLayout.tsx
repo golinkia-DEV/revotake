@@ -6,7 +6,7 @@ import { getStoreId } from "@/lib/store";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import { motion, AnimatePresence } from "framer-motion";
-import { HelpCircle, X, Send, Loader2, Sparkles, User } from "lucide-react";
+import { X, Send, Loader2, Sparkles, User } from "lucide-react";
 import api from "@/lib/api";
 
 interface HelpMsg { role: "user" | "assistant"; content: string }
@@ -42,7 +42,7 @@ function HelpChat({ onClose }: { onClose: () => void }) {
       initial={{ opacity: 0, y: 16, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 16, scale: 0.96 }}
-      className="fixed bottom-24 right-6 z-50 flex w-80 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+      className="fixed bottom-20 right-4 z-50 flex w-[calc(100vw-32px)] max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:bottom-24 sm:right-6 sm:w-80 dark:border-slate-700 dark:bg-slate-900"
     >
       <div className="flex items-center justify-between bg-primary px-4 py-3">
         <div className="flex items-center gap-2 text-white">
@@ -53,7 +53,7 @@ function HelpChat({ onClose }: { onClose: () => void }) {
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex h-72 flex-col gap-3 overflow-y-auto p-3">
+      <div className="flex max-h-[40vh] flex-col gap-3 overflow-y-auto p-3 sm:max-h-72">
         {messages.map((m, i) => (
           <div key={i} className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
             <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white ${m.role === "assistant" ? "bg-primary" : "bg-slate-400"}`}>
@@ -94,36 +94,44 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [showHelp, setShowHelp] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (pathname?.startsWith("/profesional")) return;
     if (!isAuthenticated()) router.push("/login");
   }, [router, pathname]);
+
   useEffect(() => {
     if (!isAuthenticated()) return;
     if (pathname === "/login" || pathname?.startsWith("/stores") || pathname?.startsWith("/profesional")) return;
     if (!getStoreId()) router.replace("/stores");
   }, [pathname, router]);
 
+  // Cierra el sidebar al cambiar de ruta en mobile
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
   return (
     <div className="min-h-screen bg-surface">
-      <Sidebar />
-      <div className="ml-64 flex min-h-screen flex-col">
-        <TopBar />
-        <main className="flex-1 overflow-auto p-8">{children}</main>
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+      <div className="flex min-h-screen flex-col md:ml-64">
+        <TopBar onMenuClick={() => setSidebarOpen((v) => !v)} />
+        <main className="flex-1 overflow-auto p-4 sm:p-6 md:p-8">{children}</main>
       </div>
 
       {/* Botón flotante ayuda */}
       <button
         type="button"
         onClick={() => setShowHelp((v) => !v)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 transition-transform hover:scale-105 active:scale-95"
+        className="fixed bottom-4 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 transition-transform hover:scale-105 active:scale-95 sm:bottom-6 sm:right-6 sm:h-14 sm:w-14"
         aria-label="Ayuda"
       >
         <AnimatePresence mode="wait">
           {showHelp
-            ? <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}><X className="h-6 w-6" /></motion.span>
-            : <motion.span key="h" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }}><HelpCircle className="h-6 w-6" /></motion.span>
+            ? <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}><X className="h-5 w-5 sm:h-6 sm:w-6" /></motion.span>
+            : <motion.span key="h" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }}><Sparkles className="h-5 w-5 sm:h-6 sm:w-6" /></motion.span>
           }
         </AnimatePresence>
       </button>

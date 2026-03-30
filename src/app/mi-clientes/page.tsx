@@ -35,7 +35,7 @@ export default function MiClientesPage() {
   return (
     <AppLayout>
       <div className="mb-8">
-        <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Mis clientes</h1>
+        <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Mis clientes</h1>
         <p className="max-w-2xl text-sm text-slate-500">
           Personas con al menos una cita contigo en esta tienda. Si no ves esta sección, el gerente puede haber
           desactivado el permiso <strong>ver clientes propios</strong> en Equipo y permisos.

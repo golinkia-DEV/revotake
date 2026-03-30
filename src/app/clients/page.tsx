@@ -246,7 +246,7 @@ export default function ClientsPage() {
       <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="mb-1 text-xs font-bold uppercase tracking-widest text-slate-400">CRM</p>
-          <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">Clientes</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Clientes</h1>
           <p className="mt-1 text-slate-500">{data?.total ?? 0} clientes registrados</p>
           <p className="mt-2 max-w-xl text-sm text-slate-600">
             Alta sencilla: nombre obligatorio; el resto es opcional. Tocá una tarjeta para ver el <strong>historial</strong> en la tienda (reservas, compras,

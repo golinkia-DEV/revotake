@@ -173,7 +173,7 @@ export default function SchedulingSedesPage() {
   return (
     <AppLayout>
       <div className="mb-8">
-        <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Sedes y equipo</h1>
+        <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Sedes y equipo</h1>
         <p className="max-w-2xl text-sm text-slate-500">
           Administrá las sedes de la tienda con región y comuna (Chile). Cada profesional de la agenda puede atender en una
           o varias sedes; la reserva pública solo ofrece quienes estén asignados a la sede elegida.

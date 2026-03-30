@@ -65,7 +65,7 @@ export default function MiAgendaPage() {
     return (
       <AppLayout>
         <div className="mx-auto max-w-lg">
-          <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Mi agenda</h1>
+          <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Mi agenda</h1>
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -91,7 +91,7 @@ export default function MiAgendaPage() {
     <AppLayout>
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Mi agenda</h1>
+          <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Mi agenda</h1>
           <p className="text-sm text-slate-500">
             Tus citas en esta tienda como{" "}
             {me.professionals.map((p) => p.name).join(", ")}.

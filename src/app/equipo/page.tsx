@@ -85,7 +85,7 @@ export default function EquipoPage() {
   return (
     <AppLayout>
       <div className="mb-8">
-        <h1 className="mb-2 flex items-center gap-2 text-3xl font-extrabold tracking-tight text-on-surface">
+        <h1 className="mb-2 flex items-center gap-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">
           <Shield className="h-8 w-8 text-primary" />
           Equipo y permisos
         </h1>

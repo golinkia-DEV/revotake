@@ -130,7 +130,7 @@ export default function ProductsPage() {
   return (
     <AppLayout>
       <div className="mb-10">
-        <h1 className="text-3xl font-extrabold tracking-tight text-on-surface mb-2">Inventario</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface mb-2">Inventario</h1>
         <p className="text-slate-500">
           Stock por sede dentro de la tienda activa. Las ventas descontarán unidades en la sede que indiques en la API.
         </p>

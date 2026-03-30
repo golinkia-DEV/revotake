@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
-import { LogOut, ChevronRight } from "lucide-react";
+import { LogOut, ChevronRight, X } from "lucide-react";
 import StoreSwitcher from "./StoreSwitcher";
 import { logout } from "@/lib/auth";
 import { useRouter } from "next/navigation";
@@ -33,7 +33,6 @@ const FULL_NAV: NavItem[] = [
   { href: "/settings", label: "Configuración", icon: "settings" },
 ];
 
-/** Menú reducido para rol operador (profesional): según permisos que deje el gerente. */
 const OPERATOR_NAV: NavItem[] = [
   { href: "/stores", label: "Tiendas", icon: "storefront", perm: null },
   { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true, perm: "ver_agenda_propia" },
@@ -41,7 +40,12 @@ const OPERATOR_NAV: NavItem[] = [
   { href: "/mi-produccion", label: "Mi producción", icon: "payments", filled: true, perm: "ver_reportes_comisiones" },
 ];
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const storeId = typeof window !== "undefined" ? getStoreId() : null;
@@ -67,55 +71,91 @@ export default function Sidebar() {
     router.push("/login");
   }
 
+  function handleNavClick() {
+    onClose();
+  }
+
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-slate-200 bg-slate-50 p-4 font-medium antialiased dark:border-slate-800 dark:bg-slate-900">
-      <div className="mb-8 flex items-center gap-3 px-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white shadow-lg shadow-primary/20">
-          <MaterialIcon name="deployed_code" className="text-xl" filled />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">RevoTake</h1>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Belleza & bienestar</p>
-        </div>
-      </div>
-      <div className="px-1 pb-2">
-        <StoreSwitcher />
-      </div>
-      {isOperator && (
-        <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Vista profesional</p>
+    <>
+      {/* Overlay mobile */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
       )}
-      <nav className="flex-1 space-y-1">
-        {nav.map(({ href, icon, label, filled, perm: _p }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
-          return (
-            <Link key={href} href={href}>
-              <motion.div
-                whileHover={{ x: 2 }}
-                className={clsx(
-                  "flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors",
-                  active
-                    ? "bg-blue-50 font-semibold text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
-                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                )}
-              >
-                <MaterialIcon name={icon} className="text-xl" filled={active || filled} />
-                {label}
-                {active && <ChevronRight className="ml-auto h-3 w-3 text-primary" />}
-              </motion.div>
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="mt-auto space-y-1 border-t border-slate-100 pt-4 dark:border-slate-800">
-        <button
-          type="button"
-          onClick={handleLogout}
-          className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-slate-800"
-        >
-          <LogOut className="h-5 w-5" />
-          Cerrar sesión
-        </button>
-      </div>
-    </aside>
+
+      <aside
+        className={clsx(
+          "fixed left-0 top-0 z-50 flex h-screen w-64 flex-col border-r border-slate-200 bg-slate-50 p-4 font-medium antialiased transition-transform duration-300 dark:border-slate-800 dark:bg-slate-900",
+          "md:translate-x-0",
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="mb-6 flex items-center justify-between px-2">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white shadow-lg shadow-primary/20">
+              <MaterialIcon name="deployed_code" className="text-xl" filled />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">RevoTake</h1>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Belleza & bienestar</p>
+            </div>
+          </div>
+          {/* Botón cerrar — solo visible en mobile */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 md:hidden dark:hover:bg-slate-800"
+            aria-label="Cerrar menú"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="px-1 pb-2">
+          <StoreSwitcher />
+        </div>
+
+        {isOperator && (
+          <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Vista profesional</p>
+        )}
+
+        <nav className="flex-1 space-y-1 overflow-y-auto">
+          {nav.map(({ href, icon, label, filled, perm: _p }) => {
+            const active = pathname === href || pathname.startsWith(href + "/");
+            return (
+              <Link key={href} href={href} onClick={handleNavClick}>
+                <motion.div
+                  whileHover={{ x: 2 }}
+                  className={clsx(
+                    "flex items-center gap-3 rounded-lg px-4 py-3 text-sm transition-colors",
+                    active
+                      ? "bg-blue-50 font-semibold text-blue-600 dark:bg-blue-900/20 dark:text-blue-400"
+                      : "text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                  )}
+                >
+                  <MaterialIcon name={icon} className="text-xl" filled={active || filled} />
+                  {label}
+                  {active && <ChevronRight className="ml-auto h-3 w-3 text-primary" />}
+                </motion.div>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="mt-auto space-y-1 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-sm text-slate-600 transition-colors hover:bg-slate-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
+            <LogOut className="h-5 w-5" />
+            Cerrar sesión
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }

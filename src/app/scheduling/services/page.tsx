@@ -312,7 +312,7 @@ export default function SchedulingServicesMenuPage() {
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
             Agenda · Catálogo
           </p>
-          <h1 className="mb-2 text-3xl font-extrabold tracking-tight text-on-surface">Menú de servicios</h1>
+          <h1 className="mb-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Menú de servicios</h1>
           <p className="max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-400">
             Organizá tu oferta con claridad: categorías, fotos, precios y el orden en la reserva pública. Interfaz pensada
             para leer rápido y actuar con pocos pasos.

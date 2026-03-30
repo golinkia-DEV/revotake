@@ -48,7 +48,7 @@ export default function AIPage() {
     <AppLayout>
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-on-surface">Asistente IA</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Asistente IA</h1>
           <p className="text-slate-500">Con contexto de tu negocio</p>
         </div>
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-tertiary text-white shadow-lg shadow-tertiary/25">
