@@ -12,6 +12,8 @@ import {
   LayoutGrid,
   ExternalLink,
   UserCircle,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import api, { API_URL } from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
@@ -46,6 +48,8 @@ interface HubAppointment {
   station_name?: string;
   ticket_id: string | null;
   in_progress: boolean;
+  service_price_cents: number;
+  allow_price_override: boolean;
 }
 
 interface HubMeeting {
@@ -99,6 +103,10 @@ const apptStatusLabel: Record<string, string> = {
   no_show: "No asistió",
 };
 
+function fmtCLP(value: number) {
+  return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(value);
+}
+
 function fmtRange(start: string, end: string) {
   const a = new Date(start);
   const b = new Date(end);
@@ -111,6 +119,8 @@ function fmtRange(start: string, end: string) {
 export default function CalendarPage() {
   const qc = useQueryClient();
   const storeId = typeof window !== "undefined" ? getStoreId() : null;
+  const [closeAppt, setCloseAppt] = useState<HubAppointment | null>(null);
+  const [priceInput, setPriceInput] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     title: "",
@@ -148,6 +158,20 @@ export default function CalendarPage() {
       window.history.replaceState({}, "", "/calendar");
     }
   }, []);
+
+  const closeMutation = useMutation({
+    mutationFn: async ({ id, charged }: { id: string; charged: number }) => {
+      await api.patch(`/scheduling/appointments/${id}`, { status: "completed", charged_price_cents: charged });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["meetings-agenda-hub"] });
+      qc.invalidateQueries({ queryKey: ["scheduling-panel"] });
+      qc.invalidateQueries({ queryKey: ["kanban"] });
+      toast.success("Atención cerrada y precio registrado.");
+      setCloseAppt(null);
+    },
+    onError: () => toast.error("No se pudo cerrar la cita"),
+  });
 
   const create = useMutation({
     mutationFn: (d: {
@@ -278,6 +302,20 @@ export default function CalendarPage() {
                           </p>
                         ) : null}
                         <p className="text-xs text-slate-500">{apptStatusLabel[a.status] ?? a.status}</p>
+                        <div className="mt-2 flex flex-wrap gap-2 pt-1">
+                          {a.ticket_id && (
+                            <Link href="/kanban" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
+                              Ver ficha Kanban
+                            </Link>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => { setCloseAppt(a); setPriceInput(String(a.service_price_cents || 0)); }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Cerrar y cobrar
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   ))}
@@ -546,6 +584,46 @@ export default function CalendarPage() {
           );
         })}
       </div>
+
+      {closeAppt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+            <h3 className="text-lg font-bold text-on-surface">Cerrar atención</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              {closeAppt.client_name} — {closeAppt.service_name}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Precio lista: {fmtCLP(closeAppt.service_price_cents)}.
+              {closeAppt.allow_price_override ? " Podés ajustar el monto cobrado." : ""}
+            </p>
+            <label className="mt-4 block text-xs font-medium text-slate-600">Monto cobrado (CLP)</label>
+            <input
+              type="number"
+              min={0}
+              className="input-field mt-1"
+              value={priceInput}
+              disabled={!closeAppt.allow_price_override}
+              onChange={(e) => setPriceInput(e.target.value)}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="btn-ghost" onClick={() => setCloseAppt(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={closeMutation.isPending}
+                onClick={() => {
+                  const n = Math.max(0, Math.floor(Number(priceInput) || 0));
+                  closeMutation.mutate({ id: closeAppt.id, charged: n });
+                }}
+              >
+                {closeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar cierre"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

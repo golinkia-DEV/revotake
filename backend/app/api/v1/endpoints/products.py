@@ -301,6 +301,84 @@ async def update_product(
     return {"id": product.id}
 
 
+@router.get("/branch-report")
+async def branch_stock_report(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store),
+):
+    """Stock total y ventas últimos 30 días agrupados por sede."""
+    branches = await _store_branches(db, ctx.store_id)
+    if not branches:
+        return {"branches": []}
+
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+
+    # Stock por sede: sum quantities
+    pbs_r = await db.execute(
+        select(ProductBranchStock.branch_id, func.sum(ProductBranchStock.quantity).label("total_units"))
+        .join(Product, Product.id == ProductBranchStock.product_id)
+        .where(Product.store_id == ctx.store_id)
+        .group_by(ProductBranchStock.branch_id)
+    )
+    stock_by_branch = {row.branch_id: int(row.total_units or 0) for row in pbs_r.all()}
+
+    # Valor de inventario por sede: sum(quantity * price)
+    val_r = await db.execute(
+        select(
+            ProductBranchStock.branch_id,
+            func.sum(ProductBranchStock.quantity * Product.price).label("value"),
+        )
+        .join(Product, Product.id == ProductBranchStock.product_id)
+        .where(Product.store_id == ctx.store_id)
+        .group_by(ProductBranchStock.branch_id)
+    )
+    value_by_branch = {row.branch_id: float(row.value or 0) for row in val_r.all()}
+
+    # Ventas 30d por sede: count ventas y revenue
+    sales_r = await db.execute(
+        select(
+            Purchase.branch_id,
+            func.count(Purchase.id).label("sales_count"),
+            func.sum(Purchase.total).label("revenue"),
+        )
+        .where(Purchase.store_id == ctx.store_id, Purchase.sold_at >= thirty_days_ago)
+        .group_by(Purchase.branch_id)
+    )
+    sales_by_branch: dict[str, dict] = {}
+    for row in sales_r.all():
+        sales_by_branch[row.branch_id or "__none__"] = {
+            "sales_count": int(row.sales_count or 0),
+            "revenue_30d": float(row.revenue or 0),
+        }
+
+    # Productos con stock crítico por sede
+    crit_r = await db.execute(
+        select(ProductBranchStock.branch_id, func.count(Product.id).label("critical_count"))
+        .join(Product, Product.id == ProductBranchStock.product_id)
+        .where(Product.store_id == ctx.store_id, Product.stock_status == "critical")
+        .group_by(ProductBranchStock.branch_id)
+    )
+    crit_by_branch = {row.branch_id: int(row.critical_count or 0) for row in crit_r.all()}
+
+    out = []
+    for b in branches:
+        s = sales_by_branch.get(b.id, {"sales_count": 0, "revenue_30d": 0.0})
+        out.append({
+            "branch_id": b.id,
+            "branch_name": b.name,
+            "region": b.region,
+            "comuna": b.comuna,
+            "total_units": stock_by_branch.get(b.id, 0),
+            "inventory_value": value_by_branch.get(b.id, 0.0),
+            "sales_count_30d": s["sales_count"],
+            "revenue_30d": s["revenue_30d"],
+            "critical_products": crit_by_branch.get(b.id, 0),
+        })
+
+    return {"branches": out, "period_days": 30}
+
+
 @router.post("/sales")
 async def record_sale(
     data: SaleCreate,

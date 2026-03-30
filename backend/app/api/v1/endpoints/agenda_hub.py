@@ -42,6 +42,8 @@ def _appt_row(
     branch_name: str | None,
     station_name: str | None,
     in_progress: bool,
+    svc_price_cents: int | None = None,
+    allow_price_override: bool | None = None,
 ) -> dict[str, Any]:
     return {
         "id": a.id,
@@ -56,6 +58,8 @@ def _appt_row(
         "station_name": station_name or "",
         "ticket_id": a.ticket_id,
         "in_progress": in_progress,
+        "service_price_cents": int(svc_price_cents) if svc_price_cents is not None else 0,
+        "allow_price_override": True if allow_price_override is None else bool(allow_price_override),
     }
 
 
@@ -119,7 +123,16 @@ async def agenda_hub(
 
     if can_scheduling:
         q_appt = (
-            select(Appointment, Professional.name, Service.name, Client.name, Branch.name, WorkStation.name)
+            select(
+                Appointment,
+                Professional.name,
+                Service.name,
+                Client.name,
+                Branch.name,
+                WorkStation.name,
+                Service.price_cents,
+                Service.allow_price_override,
+            )
             .outerjoin(Professional, Professional.id == Appointment.professional_id)
             .outerjoin(Service, Service.id == Appointment.service_id)
             .outerjoin(Client, Client.id == Appointment.client_id)
@@ -135,9 +148,9 @@ async def agenda_hub(
         )
         r_appt = await db.execute(q_appt)
         for row in r_appt.all():
-            a, pname, sname, cname, bname, stname = row
+            a, pname, sname, cname, bname, stname, price_c, allow_po = row
             in_prog = a.start_time <= now_utc < a.end_time
-            item = _appt_row(a, pname, sname, cname, bname, stname, in_prog)
+            item = _appt_row(a, pname, sname, cname, bname, stname, in_prog, price_c, allow_po)
             if in_prog:
                 appointments_in_progress.append(item)
             else:

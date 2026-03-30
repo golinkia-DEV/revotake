@@ -134,6 +134,11 @@ export default function ProductsPage() {
         <p className="text-slate-500">
           Stock por sede dentro de la tienda activa. Las ventas descontarán unidades en la sede que indiques en la API.
         </p>
+        <div className="mt-2">
+          <Link href="/products/sedes" className="text-sm font-semibold text-primary hover:underline">
+            Ver reporte por sede →
+          </Link>
+        </div>
         {branches.length === 0 && (
           <p className="mt-3 text-sm text-amber-800 dark:text-amber-200">
             No hay sedes en esta tienda: el stock queda solo a nivel catálogo hasta que crees al menos una en{" "}

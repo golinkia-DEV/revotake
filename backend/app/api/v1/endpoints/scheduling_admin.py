@@ -1033,9 +1033,19 @@ async def list_appointments(
     status: Optional[str] = None,
 ):
     q = (
-        select(Appointment, Service.price_cents, Service.allow_price_override, WorkStation.name)
+        select(
+            Appointment,
+            Service.price_cents,
+            Service.allow_price_override,
+            Service.name,
+            WorkStation.name,
+            Client.name,
+            Professional.name,
+        )
         .outerjoin(Service, Service.id == Appointment.service_id)
         .outerjoin(WorkStation, WorkStation.id == Appointment.station_id)
+        .outerjoin(Client, Client.id == Appointment.client_id)
+        .outerjoin(Professional, Professional.id == Appointment.professional_id)
         .where(Appointment.store_id == ctx.store_id)
         .order_by(Appointment.start_time)
     )
@@ -1053,19 +1063,19 @@ async def list_appointments(
     r = await db.execute(q)
     out = []
     for row in r.all():
-        a = row[0]
-        price_c = row[1]
-        allow_po = row[2]
-        st_name = row[3]
+        a, price_c, allow_po, svc_name, st_name, client_name, pro_name = row
         out.append(
             {
                 "id": a.id,
                 "branch_id": a.branch_id,
                 "professional_id": a.professional_id,
+                "professional_name": pro_name or "",
                 "service_id": a.service_id,
+                "service_name": svc_name or "",
                 "client_id": a.client_id,
+                "client_name": client_name or "",
                 "station_id": a.station_id,
-                "station_name": (st_name or "") if st_name else "",
+                "station_name": st_name or "",
                 "start_time": a.start_time.isoformat(),
                 "end_time": a.end_time.isoformat(),
                 "status": a.status,
@@ -1209,7 +1219,9 @@ async def create_admin_appointment(
 
 
 class AppointmentPatch(BaseModel):
-    status: Optional[str] = None
+    status: Optional[Literal[
+        "pending_payment", "confirmed", "cancelled", "completed", "no_show"
+    ]] = None
     notes: Optional[str] = None
     charged_price_cents: Optional[int] = None
     station_id: Optional[str] = None

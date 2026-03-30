@@ -2,12 +2,24 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Calendar, ExternalLink, BarChart3, ClipboardList, Download, Star } from "lucide-react";
+import { Calendar, ExternalLink, BarChart3, ClipboardList, Download, Star, TrendingUp, XCircle } from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { getStoreId } from "@/lib/store";
 import Link from "next/link";
-import { MaterialIcon } from "@/components/ui/MaterialIcon";
+
+const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
+  pending: { label: "Pendiente", cls: "bg-slate-100 text-slate-700" },
+  confirmed: { label: "Confirmada", cls: "bg-emerald-100 text-emerald-800" },
+  cancelled: { label: "Cancelada", cls: "bg-red-100 text-red-800" },
+  completed: { label: "Completada", cls: "bg-blue-100 text-blue-800" },
+  no_show: { label: "No-show", cls: "bg-orange-100 text-orange-800" },
+  pending_payment: { label: "Pago pendiente", cls: "bg-amber-100 text-amber-800" },
+};
+
+function fmtCLP(value: number) {
+  return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(value);
+}
 
 export default function SchedulingAdminPage() {
   const storeId = typeof window !== "undefined" ? getStoreId() : null;
@@ -89,10 +101,10 @@ export default function SchedulingAdminPage() {
           className="glass-card-hover p-5"
         >
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-600">
-            <MaterialIcon name="payments" className="text-lg" /> Ingresos estimados
+            <TrendingUp className="h-4 w-4" /> Ingresos estimados
           </div>
           <p className="text-2xl font-extrabold text-on-surface">
-            {dash?.revenue_cents_estimated != null ? `${dash.revenue_cents_estimated}` : "—"}
+            {dash?.revenue_cents_estimated != null ? fmtCLP(dash.revenue_cents_estimated) : "—"}
           </p>
           <p className="text-xs text-slate-500">Suma precio servicio (citas confirmadas/completadas)</p>
         </motion.div>
@@ -102,7 +114,9 @@ export default function SchedulingAdminPage() {
           transition={{ delay: 0.1 }}
           className="glass-card-hover p-5"
         >
-          <div className="mb-2 text-sm font-semibold text-slate-600">Canceladas / No-show</div>
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-600">
+            <XCircle className="h-4 w-4" /> Canceladas / No-show
+          </div>
           <p className="text-2xl font-extrabold text-on-surface">
             {dash ? `${dash.cancelled} / ${dash.no_show}` : "—"}
           </p>
@@ -201,20 +215,48 @@ export default function SchedulingAdminPage() {
 
       <div className="space-y-3">
         {appts?.items?.length === 0 && <p className="text-sm text-slate-500">No hay citas aún.</p>}
-        {appts?.items?.slice(0, 20).map((a: { id: string; start_time: string; status: string; service_id: string }) => (
-          <div
-            key={a.id}
-            className="flex items-center justify-between rounded-xl border border-slate-200 bg-white/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/50"
-          >
-            <div className="flex items-center gap-3">
-              <Calendar className="h-5 w-5 text-blue-600" />
-              <div>
-                <p className="text-sm font-semibold text-on-surface">{new Date(a.start_time).toLocaleString("es-CL")}</p>
-                <p className="text-xs text-slate-500">{a.status}</p>
+        {appts?.items?.slice(0, 20).map((a: {
+          id: string;
+          start_time: string;
+          end_time: string;
+          status: string;
+          client_name: string;
+          service_name: string;
+          professional_name: string;
+          service_price_cents: number | null;
+          charged_price_cents: number | null;
+        }) => {
+          const st = STATUS_LABEL[a.status] ?? { label: a.status, cls: "bg-slate-100 text-slate-700" };
+          const price = a.charged_price_cents ?? a.service_price_cents;
+          return (
+            <div
+              key={a.id}
+              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/50"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Calendar className="h-5 w-5 shrink-0 text-blue-600" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-on-surface">
+                    {a.client_name || "—"}{" "}
+                    {a.service_name && <span className="font-normal text-slate-500">· {a.service_name}</span>}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {new Date(a.start_time).toLocaleString("es-CL", { dateStyle: "short", timeStyle: "short" })}
+                    {" → "}
+                    {new Date(a.end_time).toLocaleTimeString("es-CL", { timeStyle: "short" })}
+                    {a.professional_name && ` · ${a.professional_name}`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-3 ml-3">
+                {price != null && (
+                  <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{fmtCLP(price)}</span>
+                )}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${st.cls}`}>{st.label}</span>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-10 rounded-2xl border border-amber-100 bg-amber-50/80 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
