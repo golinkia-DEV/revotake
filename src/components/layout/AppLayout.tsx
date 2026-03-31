@@ -43,7 +43,7 @@ function HelpChat({ onClose }: { onClose: () => void }) {
       initial={{ opacity: 0, y: 16, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 16, scale: 0.96 }}
-      className="fixed bottom-36 right-4 z-50 flex w-[calc(100vw-32px)] max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:bottom-24 md:right-6 md:w-80 dark:border-slate-700 dark:bg-slate-900"
+      className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-50 flex w-[calc(100vw-32px)] max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl md:bottom-24 md:right-6 md:w-80 dark:border-slate-700 dark:bg-slate-900"
     >
       <div className="flex items-center justify-between bg-primary px-4 py-3">
         <div className="flex items-center gap-2 text-white">
@@ -119,23 +119,23 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-h-screen flex-col md:ml-64">
         <TopBar onMenuClick={() => setSidebarOpen((v) => !v)} />
-        {/* pb-16 en mobile para que el contenido no quede tapado por el BottomNav */}
-        <main className="flex-1 overflow-auto p-4 pb-20 sm:p-6 sm:pb-20 md:p-8 md:pb-8">{children}</main>
+        {/* pb-[calc(4rem+env(safe-area-inset-bottom))] en mobile para BottomNav + safe area */}
+        <main className="flex-1 overflow-auto p-4 pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:p-6 sm:pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:p-8 md:pb-8">{children}</main>
       </div>
 
       <BottomNav onMoreClick={() => setSidebarOpen((v) => !v)} />
 
-      {/* Botón flotante ayuda */}
+      {/* Botón flotante ayuda — por encima del BottomNav en mobile */}
       <button
         type="button"
         onClick={() => setShowHelp((v) => !v)}
-        className="fixed bottom-20 right-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 transition-transform hover:scale-105 active:scale-95 md:bottom-6 md:right-6 md:h-14 md:w-14"
+        className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/30 transition-transform hover:scale-105 active:scale-95 md:bottom-6 md:right-6 md:h-14 md:w-14"
         aria-label="Ayuda"
       >
         <AnimatePresence mode="wait">
           {showHelp
-            ? <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}><X className="h-5 w-5 sm:h-6 sm:w-6" /></motion.span>
-            : <motion.span key="h" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }}><Sparkles className="h-5 w-5 sm:h-6 sm:w-6" /></motion.span>
+            ? <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}><X className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" /></motion.span>
+            : <motion.span key="h" initial={{ rotate: 90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -90, opacity: 0 }}><Sparkles className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" /></motion.span>
           }
         </AnimatePresence>
       </button>

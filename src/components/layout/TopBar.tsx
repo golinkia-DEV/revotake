@@ -66,17 +66,25 @@ export default function TopBar({
   return (
     <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b border-slate-100 bg-white/80 px-3 backdrop-blur-md sm:h-16 sm:px-6 dark:border-slate-800 dark:bg-slate-900/80">
       <div className="flex items-center gap-2">
-        {/* Hamburger — visible solo en tablet (sm-md), en mobile lo reemplaza el BottomNav */}
+        {/* Hamburger — visible en mobile y tablet, oculto en desktop donde el sidebar es fijo */}
         <button
           type="button"
           onClick={onMenuClick}
-          className="hidden h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-primary sm:flex md:hidden dark:hover:bg-slate-800"
+          className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-primary md:hidden dark:hover:bg-slate-800"
           aria-label="Abrir menú"
         >
           <Menu className="h-5 w-5" />
         </button>
 
-        {/* Search — oculto en mobile muy pequeño, visible desde sm */}
+        {/* Logo en mobile — solo visible cuando el sidebar está oculto */}
+        <div className="flex items-center gap-2 md:hidden">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-white shadow-sm shadow-primary/20">
+            <MaterialIcon name="deployed_code" className="text-sm" filled />
+          </div>
+          <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-50">RevoTake</span>
+        </div>
+
+        {/* Search — visible desde sm en desktop */}
         <div className="relative hidden w-full max-w-xs items-center sm:flex md:max-w-md">
           <MaterialIcon name="search" className="pointer-events-none absolute left-3 text-lg text-slate-400" />
           <input
@@ -88,8 +96,8 @@ export default function TopBar({
         </div>
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2">
-        {/* Search icon en mobile en vez del input */}
+      <div className="flex items-center gap-0.5 sm:gap-2">
+        {/* Search icon en mobile */}
         <button
           type="button"
           className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 sm:hidden"
@@ -108,7 +116,7 @@ export default function TopBar({
           >
             <Bell className="h-5 w-5" />
             {count > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+              <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
                 {count > 9 ? "9+" : count}
               </span>
             )}
