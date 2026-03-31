@@ -18,13 +18,14 @@ interface BranchRef { id: string; name: string; }
 interface BranchStockRow { branch_id: string; branch_name: string; quantity: number; lead_time_days: number | null; }
 interface ProductItem {
   id: string; name: string; sku: string | null; price: number; stock: number;
+  cost_price?: number; image_urls?: string[];
   branch_stocks: BranchStockRow[]; stock_status: string; avg_daily_sales: number;
   days_of_stock: number | null; category: string | null; lead_time_days: number;
   description?: string;
 }
 interface AlertItem { id: string; name: string; stock: number; branch_stocks: BranchStockRow[]; stock_status: string; days_of_stock: number | null; }
 
-const emptyForm = { name: "", description: "", sku: "", price: 0, stock: 0, lead_time_days: 3, category: "" };
+const emptyForm = { name: "", description: "", sku: "", price: 0, cost_price: 0, image_url_1: "", image_url_2: "", image_url_3: "", stock: 0, lead_time_days: 3, category: "" };
 
 function fmtCLP(n: number) {
   return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(n);
@@ -52,6 +53,8 @@ export default function ProductsPage() {
   const [adjustBranch, setAdjustBranch] = useState("");
   const [adjustDelta, setAdjustDelta] = useState(0);
   const [adjustReason, setAdjustReason] = useState("entrada");
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierEmail, setSupplierEmail] = useState("");
 
   const { data: branchCtx } = useQuery({
     queryKey: ["products-branch-context", storeId],
@@ -70,6 +73,11 @@ export default function ProductsPage() {
     queryFn: () => api.get("/products/alerts").then((r) => r.data),
     enabled: !!storeId,
   });
+  const { data: suppliersData } = useQuery({
+    queryKey: ["suppliers", storeId],
+    queryFn: () => api.get("/products/suppliers").then((r) => r.data),
+    enabled: !!storeId,
+  });
 
   useEffect(() => {
     if (!showCreate || branches.length === 0) return;
@@ -81,7 +89,12 @@ export default function ProductsPage() {
   }, [showCreate, branches]);
 
   useEffect(() => {
-    if (editProduct) setEditForm({ name: editProduct.name, description: editProduct.description ?? "", sku: editProduct.sku ?? "", price: editProduct.price, stock: editProduct.stock, lead_time_days: editProduct.lead_time_days, category: editProduct.category ?? "" });
+    if (editProduct) setEditForm({
+      name: editProduct.name, description: editProduct.description ?? "", sku: editProduct.sku ?? "", price: editProduct.price,
+      cost_price: editProduct.cost_price ?? 0,
+      image_url_1: editProduct.image_urls?.[0] ?? "", image_url_2: editProduct.image_urls?.[1] ?? "", image_url_3: editProduct.image_urls?.[2] ?? "",
+      stock: editProduct.stock, lead_time_days: editProduct.lead_time_days, category: editProduct.category ?? ""
+    });
   }, [editProduct]);
 
   const allProducts: ProductItem[] = data?.items ?? [];
@@ -101,6 +114,7 @@ export default function ProductsPage() {
   const create = useMutation({
     mutationFn: async () => {
       const payload: Record<string, unknown> = { ...form };
+      payload.image_urls = [form.image_url_1, form.image_url_2, form.image_url_3].map((x) => x.trim()).filter(Boolean).slice(0, 3);
       if (branches.length > 0) {
         payload.branch_stocks = branches.map((b) => {
           const raw = (branchLead[b.id] ?? "").trim();
@@ -115,7 +129,10 @@ export default function ProductsPage() {
   });
 
   const update = useMutation({
-    mutationFn: (id: string) => api.patch(`/products/${id}`, editForm),
+    mutationFn: (id: string) => api.patch(`/products/${id}`, {
+      ...editForm,
+      image_urls: [editForm.image_url_1, editForm.image_url_2, editForm.image_url_3].map((x) => x.trim()).filter(Boolean).slice(0, 3),
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["products"] }); setEditProduct(null); toast.success("Producto actualizado"); },
     onError: () => toast.error("Error al actualizar"),
   });
@@ -131,6 +148,21 @@ export default function ProductsPage() {
       api.post(`/products/${id}/adjust-stock`, { branch_id: adjustBranch || null, delta: adjustDelta, reason: adjustReason }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["products"] }); qc.invalidateQueries({ queryKey: ["stock-alerts"] }); setAdjustProduct(null); setAdjustDelta(0); toast.success("Stock ajustado"); },
     onError: () => toast.error("Error al ajustar stock"),
+  });
+  const createSupplier = useMutation({
+    mutationFn: () => api.post("/products/suppliers", { name: supplierName, email: supplierEmail }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["suppliers"] });
+      setSupplierName("");
+      setSupplierEmail("");
+      toast.success("Proveedor creado");
+    },
+    onError: () => toast.error("No se pudo crear proveedor"),
+  });
+  const quoteLowStock = useMutation({
+    mutationFn: () => api.post("/products/quotes", { product_ids: (alerts?.alerts ?? []).map((a: AlertItem) => a.id) }),
+    onSuccess: () => toast.success("Cotizaciones enviadas"),
+    onError: () => toast.error("No se pudieron enviar cotizaciones"),
   });
 
   if (!storeId) {
@@ -216,8 +248,24 @@ export default function ProductsPage() {
               </div>
             ))}
           </div>
+          <button type="button" className="btn-primary mt-3 text-xs" onClick={() => quoteLowStock.mutate()} disabled={quoteLowStock.isPending}>
+            Generar cotización por proveedor
+          </button>
         </motion.div>
       )}
+      <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+        <h3 className="mb-2 font-semibold text-on-surface">Proveedores</h3>
+        <div className="mb-3 flex flex-wrap gap-2">
+          <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} className="input-field max-w-xs" placeholder="Nombre proveedor" />
+          <input value={supplierEmail} onChange={(e) => setSupplierEmail(e.target.value)} className="input-field max-w-xs" placeholder="Email proveedor" />
+          <button type="button" className="btn-primary text-xs" disabled={!supplierName.trim() || !supplierEmail.trim() || createSupplier.isPending} onClick={() => createSupplier.mutate()}>
+            Agregar proveedor
+          </button>
+        </div>
+        <p className="text-xs text-slate-500">
+          {(suppliersData?.items ?? []).length} proveedor(es) registrados.
+        </p>
+      </div>
 
       {/* Search + Filters + Add */}
       <div className="mb-5 flex flex-wrap gap-3 items-center justify-between">
@@ -275,6 +323,10 @@ export default function ProductsPage() {
                 <label className="mb-1 block text-xs text-slate-500">Precio de venta (CLP)</label>
                 <input type="number" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: +e.target.value }))} className="input-field" placeholder="0" />
               </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Valor compra (CLP)</label>
+                <input type="number" value={form.cost_price} onChange={(e) => setForm((f) => ({ ...f, cost_price: +e.target.value }))} className="input-field" placeholder="0" />
+              </div>
               {branches.length === 0 && (
                 <div>
                   <label className="mb-1 block text-xs text-slate-500">Stock inicial</label>
@@ -286,6 +338,9 @@ export default function ProductsPage() {
                 <input type="number" value={form.lead_time_days} onChange={(e) => setForm((f) => ({ ...f, lead_time_days: +e.target.value }))} className="input-field" />
               </div>
               <input value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-field md:col-span-3" placeholder="Descripción (opcional)" />
+              <input value={form.image_url_1} onChange={(e) => setForm((f) => ({ ...f, image_url_1: e.target.value }))} className="input-field" placeholder="Imagen 1 (URL)" />
+              <input value={form.image_url_2} onChange={(e) => setForm((f) => ({ ...f, image_url_2: e.target.value }))} className="input-field" placeholder="Imagen 2 (URL)" />
+              <input value={form.image_url_3} onChange={(e) => setForm((f) => ({ ...f, image_url_3: e.target.value }))} className="input-field" placeholder="Imagen 3 (URL)" />
             </div>
             {branches.length > 0 && (
               <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700">
@@ -346,6 +401,10 @@ export default function ProductsPage() {
               <div className="flex justify-between">
                 <span className="text-slate-500">Precio</span>
                 <span className="font-semibold text-on-surface">{fmtCLP(p.price)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Valor compra</span>
+                <span className="text-on-surface">{fmtCLP(p.cost_price ?? 0)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Stock total</span>
@@ -434,6 +493,10 @@ export default function ProductsPage() {
                   <input type="number" value={editForm.price} onChange={(e) => setEditForm((f) => ({ ...f, price: +e.target.value }))} className="input-field" />
                 </div>
                 <div>
+                  <label className="mb-1 block text-xs text-slate-500">Valor compra (CLP)</label>
+                  <input type="number" value={editForm.cost_price} onChange={(e) => setEditForm((f) => ({ ...f, cost_price: +e.target.value }))} className="input-field" />
+                </div>
+                <div>
                   <label className="mb-1 block text-xs text-slate-500">Días de reposición</label>
                   <input type="number" value={editForm.lead_time_days} onChange={(e) => setEditForm((f) => ({ ...f, lead_time_days: +e.target.value }))} className="input-field" />
                 </div>
@@ -441,6 +504,9 @@ export default function ProductsPage() {
                   <label className="mb-1 block text-xs text-slate-500">Descripción</label>
                   <textarea value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} className="input-field min-h-[72px] resize-none" />
                 </div>
+                <input value={editForm.image_url_1} onChange={(e) => setEditForm((f) => ({ ...f, image_url_1: e.target.value }))} className="input-field md:col-span-2" placeholder="Imagen 1 (URL)" />
+                <input value={editForm.image_url_2} onChange={(e) => setEditForm((f) => ({ ...f, image_url_2: e.target.value }))} className="input-field md:col-span-2" placeholder="Imagen 2 (URL)" />
+                <input value={editForm.image_url_3} onChange={(e) => setEditForm((f) => ({ ...f, image_url_3: e.target.value }))} className="input-field md:col-span-2" placeholder="Imagen 3 (URL)" />
               </div>
               <div className="mt-5 flex justify-end gap-3">
                 <button type="button" onClick={() => setEditProduct(null)} className="btn-ghost">Cancelar</button>

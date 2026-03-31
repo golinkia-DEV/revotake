@@ -21,6 +21,8 @@ const OP_TOGGLE = [
   { key: "ver_agenda_propia", label: "Ver su agenda (Mi agenda)" },
   { key: "ver_clientes_propios", label: "Ver sus clientes (citados con él/ella)" },
   { key: "ver_reportes_comisiones", label: "Ver producción / comisiones" },
+  { key: "ver_historial_cliente", label: "Ver historial de clienta (servicios y montos)" },
+  { key: "gestionar_notas_cliente", label: "Crear notas internas en ficha de clienta" },
 ] as const;
 
 export default function EquipoPage() {

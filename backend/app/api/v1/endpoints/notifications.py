@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.deps import StoreContext, require_store
 from app.models.product import Product
 from app.models.scheduling import Appointment, AppointmentStatus, WaitlistEntry
+from app.models.client import Client
 from app.models.meeting import Meeting
 
 router = APIRouter()
@@ -118,6 +119,34 @@ async def get_notifications(
             "title": f"{wc} cliente{'s' if wc > 1 else ''} en lista de espera",
             "body": "Hay clientes esperando disponibilidad.",
             "href": "/scheduling",
+            "severity": "warning",
+            "created_at": now.isoformat(),
+        })
+
+    # Cancelaciones reiteradas por clienta (últimos 90 días)
+    t90 = now - timedelta(days=90)
+    repeated = await db.execute(
+        select(Appointment.client_id, func.count(Appointment.id))
+        .where(
+            Appointment.store_id == sid,
+            Appointment.status == AppointmentStatus.CANCELLED.value,
+            Appointment.client_id.is_not(None),
+            Appointment.start_time >= t90,
+        )
+        .group_by(Appointment.client_id)
+        .having(func.count(Appointment.id) >= 3)
+        .limit(5)
+    )
+    for cid, cnt in repeated.all():
+        client_name = (
+            await db.execute(select(Client.name).where(Client.id == cid))
+        ).scalar_one_or_none() or "Clienta"
+        items.append({
+            "id": f"repeated-cancel-{cid}",
+            "type": "repeat_cancellations",
+            "title": f"Cancelaciones reiteradas: {client_name}",
+            "body": f"{cnt} cancelaciones en los últimos 90 días.",
+            "href": "/calendar",
             "severity": "warning",
             "created_at": now.isoformat(),
         })

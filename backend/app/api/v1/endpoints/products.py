@@ -10,10 +10,13 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
 from app.core.deps import StoreContext, ensure_branch_in_scope, require_store_permission
 from app.core.permissions import EXPORTAR_REGISTROS, REGISTRAR_VENTAS, VER_REPORTES
-from app.models.product import Product, ProductBranchStock
+from app.models.product import Product, ProductBranchStock, ProductCostHistory
 from app.models.purchase import Purchase
 from app.models.client import Client
 from app.models.scheduling import Branch
+from app.models.supplier import Supplier, ProductSupplier, QuotationRequest
+from app.models.store import StoreMember, StoreMemberRole
+from app.services.mail import mail_configured, send_html_email
 from app.models.user import User
 
 router = APIRouter()
@@ -30,9 +33,11 @@ class ProductCreate(BaseModel):
     description: Optional[str] = None
     sku: Optional[str] = None
     price: float = 0
+    cost_price: float = 0
     stock: int = 0
     lead_time_days: int = 3
     category: Optional[str] = None
+    image_urls: Optional[list[str]] = None
     custom_fields: dict = {}
     branch_stocks: Optional[list[BranchStockIn]] = None
 
@@ -43,6 +48,20 @@ class SaleCreate(BaseModel):
     quantity: int
     unit_price: float
     branch_id: Optional[str] = None
+
+
+class SupplierCreate(BaseModel):
+    name: str
+    email: str
+    phone: Optional[str] = None
+
+
+class ProductSuppliersBody(BaseModel):
+    supplier_ids: list[str] = Field(default_factory=list)
+
+
+class QuotationCreate(BaseModel):
+    product_ids: list[str]
 
 
 async def _sync_product_stock_from_branches(db: AsyncSession, product: Product) -> None:
@@ -185,6 +204,8 @@ async def list_products(
                 "name": p.name,
                 "sku": p.sku,
                 "price": p.price,
+                "cost_price": p.cost_price,
+                "image_urls": (p.image_urls or [])[:3],
                 "stock": p.stock,
                 "branch_stocks": payload.get(p.id, []),
                 "stock_status": p.stock_status,
@@ -244,6 +265,8 @@ async def get_product(
         "description": product.description,
         "sku": product.sku,
         "price": product.price,
+        "cost_price": product.cost_price,
+        "image_urls": (product.image_urls or [])[:3],
         "stock": product.stock,
         "branch_stocks": payload.get(product.id, []),
         "lead_time_days": product.lead_time_days,
@@ -264,8 +287,11 @@ async def create_product(
 ):
     body = data.model_dump(exclude={"branch_stocks"})
     product = Product(store_id=ctx.store_id, **body)
+    if isinstance(product.image_urls, list):
+        product.image_urls = list(product.image_urls)[:3]
     db.add(product)
     await db.flush()
+    db.add(ProductCostHistory(product_id=product.id, cost_price=float(product.cost_price or 0)))
     await _set_product_branch_stocks(db, product, ctx.store_id, data.branch_stocks, data.stock)
     await recalculate_stock_status(product, db)
     return {"id": product.id, "name": product.name}
@@ -284,8 +310,11 @@ async def update_product(
     if not product:
         raise HTTPException(404)
     body = data.model_dump(exclude={"branch_stocks"})
+    prev_cost = float(product.cost_price or 0)
     for k, v in body.items():
         setattr(product, k, v)
+    if isinstance(product.image_urls, list):
+        product.image_urls = list(product.image_urls)[:3]
     branch_items = data.branch_stocks
     if branch_items is None:
         ex = await db.execute(select(ProductBranchStock).where(ProductBranchStock.product_id == product.id))
@@ -299,7 +328,30 @@ async def update_product(
     await db.flush()
     await _set_product_branch_stocks(db, product, ctx.store_id, branch_items, data.stock)
     await recalculate_stock_status(product, db)
+    if float(product.cost_price or 0) != prev_cost:
+        db.add(ProductCostHistory(product_id=product.id, cost_price=float(product.cost_price or 0)))
     return {"id": product.id}
+
+
+@router.get("/{product_id}/cost-history")
+async def get_product_cost_history(
+    product_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES, REGISTRAR_VENTAS)),
+):
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.store_id == ctx.store_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(404, "Product not found")
+    rows = (
+        await db.execute(
+            select(ProductCostHistory)
+            .where(ProductCostHistory.product_id == product_id)
+            .order_by(ProductCostHistory.changed_at.desc())
+            .limit(100)
+        )
+    ).scalars().all()
+    return {"items": [{"cost_price": r.cost_price, "changed_at": r.changed_at.isoformat()} for r in rows]}
 
 
 @router.get("/branch-report")
@@ -439,3 +491,104 @@ async def record_sale(
     db.add(purchase)
     await recalculate_stock_status(product, db)
     return {"message": "Sale recorded", "stock_status": product.stock_status}
+
+
+@router.get("/suppliers")
+async def list_suppliers(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES, REGISTRAR_VENTAS)),
+):
+    rows = (await db.execute(select(Supplier).where(Supplier.store_id == ctx.store_id).order_by(Supplier.name))).scalars().all()
+    return {"items": [{"id": s.id, "name": s.name, "email": s.email, "phone": s.phone} for s in rows]}
+
+
+@router.post("/suppliers")
+async def create_supplier(
+    data: SupplierCreate,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(REGISTRAR_VENTAS)),
+):
+    s = Supplier(store_id=ctx.store_id, name=data.name.strip(), email=data.email.strip().lower(), phone=(data.phone or "").strip() or None)
+    db.add(s)
+    await db.flush()
+    return {"id": s.id}
+
+
+@router.get("/{product_id}/suppliers")
+async def list_product_suppliers(
+    product_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES, REGISTRAR_VENTAS)),
+):
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.store_id == ctx.store_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(404, "Product not found")
+    rows = (
+        await db.execute(
+            select(Supplier).join(ProductSupplier, ProductSupplier.supplier_id == Supplier.id).where(ProductSupplier.product_id == product_id)
+        )
+    ).scalars().all()
+    return {"items": [{"id": s.id, "name": s.name, "email": s.email, "phone": s.phone} for s in rows]}
+
+
+@router.put("/{product_id}/suppliers")
+async def set_product_suppliers(
+    product_id: str,
+    data: ProductSuppliersBody,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(REGISTRAR_VENTAS)),
+):
+    product = (await db.execute(select(Product).where(Product.id == product_id, Product.store_id == ctx.store_id))).scalar_one_or_none()
+    if not product:
+        raise HTTPException(404, "Product not found")
+    await db.execute(delete(ProductSupplier).where(ProductSupplier.product_id == product_id))
+    if data.supplier_ids:
+        sup_rows = (
+            await db.execute(select(Supplier.id).where(Supplier.store_id == ctx.store_id, Supplier.id.in_(data.supplier_ids)))
+        ).scalars().all()
+        for sid in sup_rows:
+            db.add(ProductSupplier(product_id=product_id, supplier_id=sid))
+    return {"ok": True}
+
+
+@router.post("/quotes")
+async def create_quotation_requests(
+    data: QuotationCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(REGISTRAR_VENTAS)),
+):
+    if not data.product_ids:
+        raise HTTPException(400, "Selecciona productos")
+    rows = (
+        await db.execute(
+            select(Product, Supplier)
+            .join(ProductSupplier, ProductSupplier.product_id == Product.id)
+            .join(Supplier, Supplier.id == ProductSupplier.supplier_id)
+            .where(Product.store_id == ctx.store_id, Product.id.in_(data.product_ids))
+        )
+    ).all()
+    by_supplier: dict[str, dict] = {}
+    for product, supplier in rows:
+        bucket = by_supplier.setdefault(supplier.id, {"supplier": supplier, "products": []})
+        bucket["products"].append(product)
+    sent = 0
+    for sid, payload in by_supplier.items():
+        supplier: Supplier = payload["supplier"]
+        products = payload["products"]
+        items_html = "".join(f"<li>{p.name} · stock actual {p.stock}</li>" for p in products)
+        html = (
+            f"<p>Hola {supplier.name},</p>"
+            "<p>Solicitamos cotización de los siguientes productos:</p>"
+            f"<ul>{items_html}</ul>"
+            "<p>Gracias.</p>"
+        )
+        if mail_configured():
+            send_html_email(supplier.email, "Solicitud de cotización", html)
+        db.add(QuotationRequest(store_id=ctx.store_id, supplier_id=sid, payload={"product_ids": [p.id for p in products]}, email_to=supplier.email, email_cc=user.email))
+        sent += 1
+    return {"ok": True, "sent_requests": sent}

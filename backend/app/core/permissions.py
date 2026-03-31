@@ -32,6 +32,8 @@ VER_MARKETING_EMAIL = "ver_marketing_email"
 VER_CAMPOS_PERSONALIZADOS = "ver_campos_personalizados"
 EDITAR_CAMPOS_PERSONALIZADOS = "editar_campos_personalizados"
 VER_CATALOGO_AGENDA = "ver_catalogo_agenda"
+VER_HISTORIAL_CLIENTE = "ver_historial_cliente"
+GESTIONAR_NOTAS_CLIENTE = "gestionar_notas_cliente"
 
 ALL_STORE_PERMISSIONS: FrozenSet[str] = frozenset(
     {
@@ -58,6 +60,8 @@ ALL_STORE_PERMISSIONS: FrozenSet[str] = frozenset(
         VER_CAMPOS_PERSONALIZADOS,
         EDITAR_CAMPOS_PERSONALIZADOS,
         VER_CATALOGO_AGENDA,
+        VER_HISTORIAL_CLIENTE,
+        GESTIONAR_NOTAS_CLIENTE,
     }
 )
 
@@ -154,6 +158,8 @@ def _default_permissions_for_role(role: StoreMemberRole) -> FrozenSet[str]:
                 VER_MARKETING_EMAIL,
                 VER_CAMPOS_PERSONALIZADOS,
                 EDITAR_CAMPOS_PERSONALIZADOS,
+                VER_HISTORIAL_CLIENTE,
+                GESTIONAR_NOTAS_CLIENTE,
             }
         )
     if normalized == StoreMemberRole.BRANCH_OPERATOR.value:
@@ -172,6 +178,7 @@ def _default_permissions_for_role(role: StoreMemberRole) -> FrozenSet[str]:
             VER_REPORTES_COMISIONES,
             VER_FICHAS,
             VER_CAMPOS_PERSONALIZADOS,
+            VER_HISTORIAL_CLIENTE,
         }
     )
 

@@ -14,6 +14,8 @@ class Product(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     sku: Mapped[str | None] = mapped_column(String, nullable=True)
     price: Mapped[float] = mapped_column(Float, default=0)
+    cost_price: Mapped[float] = mapped_column(Float, default=0)
+    image_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     stock: Mapped[int] = mapped_column(Integer, default=0)
     lead_time_days: Mapped[int] = mapped_column(Integer, default=3)
     stock_status: Mapped[str] = mapped_column(String, default="ok")
@@ -25,6 +27,11 @@ class Product(Base):
     sales: Mapped[list["Purchase"]] = relationship("Purchase", back_populates="product")
     branch_stocks: Mapped[list["ProductBranchStock"]] = relationship(
         "ProductBranchStock",
+        back_populates="product",
+        cascade="all, delete-orphan",
+    )
+    cost_history: Mapped[list["ProductCostHistory"]] = relationship(
+        "ProductCostHistory",
         back_populates="product",
         cascade="all, delete-orphan",
     )
@@ -44,3 +51,12 @@ class ProductBranchStock(Base):
     lead_time_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     product: Mapped["Product"] = relationship("Product", back_populates="branch_stocks")
+
+
+class ProductCostHistory(Base):
+    __tablename__ = "product_cost_history"
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    product_id: Mapped[str] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    cost_price: Mapped[float] = mapped_column(Float, default=0)
+    changed_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    product: Mapped["Product"] = relationship("Product", back_populates="cost_history")

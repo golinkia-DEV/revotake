@@ -404,6 +404,7 @@ export default function CalendarPage() {
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
   const [selectedAppt, setSelectedAppt] = useState<ProAppointment | null>(null);
   const [showProCal, setShowProCal] = useState(false);
+  const [proViewMode, setProViewMode] = useState<"calendar" | "list">("calendar");
 
   const weekEnd = addDays(weekStart, 6);
 
@@ -581,6 +582,10 @@ export default function CalendarPage() {
 
                       {selectedPro && (
                         <div className="flex items-end gap-2 ml-auto">
+                          <div className="mr-2 rounded-lg border border-slate-200 p-1 dark:border-slate-700">
+                            <button type="button" onClick={() => setProViewMode("calendar")} className={clsx("rounded px-2 py-1 text-xs", proViewMode === "calendar" ? "bg-primary text-white" : "text-slate-600")}>Calendario</button>
+                            <button type="button" onClick={() => setProViewMode("list")} className={clsx("rounded px-2 py-1 text-xs", proViewMode === "list" ? "bg-primary text-white" : "text-slate-600")}>Lista</button>
+                          </div>
                           <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))}
                             className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
                             Hoy
@@ -627,11 +632,23 @@ export default function CalendarPage() {
                           ))}
                         </div>
 
-                        <ProCalendar
-                          appointments={proAppointments}
-                          weekStart={weekStart}
-                          onSelectAppt={setSelectedAppt}
-                        />
+                        {proViewMode === "calendar" ? (
+                          <ProCalendar
+                            appointments={proAppointments}
+                            weekStart={weekStart}
+                            onSelectAppt={setSelectedAppt}
+                          />
+                        ) : (
+                          <div className="space-y-2 rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
+                            {proAppointments.length === 0 && <p className="text-sm text-slate-500">Sin citas esta semana.</p>}
+                            {proAppointments.map((a) => (
+                              <button key={a.id} type="button" onClick={() => setSelectedAppt(a)} className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left text-sm dark:border-slate-700">
+                                <span className="font-medium text-on-surface">{a.client_name} · {a.service_name}</span>
+                                <span className="text-xs text-slate-500">{new Date(a.start_time).toLocaleString("es-CL")}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
                         {proAppointments.length === 0 && (
                           <p className="mt-4 text-center text-sm text-slate-400">Sin citas esta semana para este profesional.</p>

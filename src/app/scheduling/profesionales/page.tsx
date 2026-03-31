@@ -64,6 +64,12 @@ export default function CrearProfesionalPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [paternalLastName, setPaternalLastName] = useState("");
+  const [maternalLastName, setMaternalLastName] = useState("");
+  const [birthDate, setBirthDate] = useState("");
+  const [hireDate, setHireDate] = useState("");
+  const [address, setAddress] = useState("");
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [serviceIds, setServiceIds] = useState<string[]>([]);
   const [commissionByService, setCommissionByService] = useState<Record<string, string>>({});
@@ -99,6 +105,12 @@ export default function CrearProfesionalPage() {
   const createProfessional = useMutation({
     mutationFn: (body: {
       name: string;
+      first_name: string;
+      paternal_last_name: string;
+      maternal_last_name: string;
+      birth_date: string;
+      hire_date: string;
+      address: string;
       email: string;
       phone: string;
       branch_ids: string[];
@@ -112,6 +124,12 @@ export default function CrearProfesionalPage() {
       qc.invalidateQueries({ queryKey: ["scheduling-professionals"] });
       toast.success("Invitación enviada por correo con enlace para crear contraseña");
       setName("");
+      setFirstName("");
+      setPaternalLastName("");
+      setMaternalLastName("");
+      setBirthDate("");
+      setHireDate("");
+      setAddress("");
       setEmail("");
       setPhone("");
       setBranchIds([]);
@@ -141,6 +159,12 @@ export default function CrearProfesionalPage() {
   });
   const canSubmit =
     name.trim().length > 0 &&
+    firstName.trim().length > 0 &&
+    paternalLastName.trim().length > 0 &&
+    maternalLastName.trim().length > 0 &&
+    birthDate.trim().length > 0 &&
+    hireDate.trim().length > 0 &&
+    address.trim().length > 0 &&
     email.trim().includes("@") &&
     phone.trim().length >= 6 &&
     branchIds.length > 0 &&
@@ -161,6 +185,12 @@ export default function CrearProfesionalPage() {
     }
     createProfessional.mutate({
       name: name.trim(),
+      first_name: firstName.trim(),
+      paternal_last_name: paternalLastName.trim(),
+      maternal_last_name: maternalLastName.trim(),
+      birth_date: birthDate.trim(),
+      hire_date: hireDate.trim(),
+      address: address.trim(),
       email: email.trim(),
       phone: phone.trim(),
       branch_ids: branchIds,
@@ -237,6 +267,30 @@ export default function CrearProfesionalPage() {
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ej. Camila Rojas"
                 />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Nombre *</span>
+                <input className="input-field w-full" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Apellido paterno *</span>
+                <input className="input-field w-full" value={paternalLastName} onChange={(e) => setPaternalLastName(e.target.value)} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Apellido materno *</span>
+                <input className="input-field w-full" value={maternalLastName} onChange={(e) => setMaternalLastName(e.target.value)} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Fecha nacimiento *</span>
+                <input type="date" className="input-field w-full" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Fecha ingreso *</span>
+                <input type="date" className="input-field w-full" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
+              </label>
+              <label className="block text-sm md:col-span-2">
+                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Dirección *</span>
+                <input className="input-field w-full" value={address} onChange={(e) => setAddress(e.target.value)} />
               </label>
               <label className="block text-sm">
                 <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Correo electrónico *</span>

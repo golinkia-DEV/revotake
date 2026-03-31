@@ -81,6 +81,12 @@ async def _migrate_professional_invite_and_commissions():
     if "postgresql" in settings.DATABASE_URL:
         async with engine.begin() as conn:
             await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS phone VARCHAR(40);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS first_name VARCHAR(120);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS paternal_last_name VARCHAR(120);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS maternal_last_name VARCHAR(120);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS birth_date VARCHAR(10);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS hire_date VARCHAR(10);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address TEXT;"))
             await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_token VARCHAR(64);"))
             await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMP;"))
             await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_member_role VARCHAR(40);"))
@@ -107,6 +113,12 @@ async def _migrate_professional_invite_and_commissions():
     elif "sqlite" in settings.DATABASE_URL:
         for stmt in (
             "ALTER TABLE professionals ADD COLUMN phone VARCHAR(40);",
+            "ALTER TABLE professionals ADD COLUMN first_name VARCHAR(120);",
+            "ALTER TABLE professionals ADD COLUMN paternal_last_name VARCHAR(120);",
+            "ALTER TABLE professionals ADD COLUMN maternal_last_name VARCHAR(120);",
+            "ALTER TABLE professionals ADD COLUMN birth_date VARCHAR(10);",
+            "ALTER TABLE professionals ADD COLUMN hire_date VARCHAR(10);",
+            "ALTER TABLE professionals ADD COLUMN address TEXT;",
             "ALTER TABLE professionals ADD COLUMN invite_token VARCHAR(64);",
             "ALTER TABLE professionals ADD COLUMN invite_expires_at TIMESTAMP;",
             "ALTER TABLE professionals ADD COLUMN invite_member_role VARCHAR(40);",
@@ -706,6 +718,103 @@ async def _migrate_product_branch_stock():
             pass
 
 
+async def _migrate_clients_extended_fields():
+    """Clientes: apellidos, fecha nacimiento y rut para búsqueda."""
+    if "postgresql" in settings.DATABASE_URL:
+        stmts = [
+            "ALTER TABLE clients ADD COLUMN IF NOT EXISTS paternal_last_name VARCHAR;",
+            "ALTER TABLE clients ADD COLUMN IF NOT EXISTS maternal_last_name VARCHAR;",
+            "ALTER TABLE clients ADD COLUMN IF NOT EXISTS birth_date VARCHAR(10);",
+            "ALTER TABLE clients ADD COLUMN IF NOT EXISTS rut VARCHAR(30);",
+            "CREATE INDEX IF NOT EXISTS ix_clients_rut ON clients (rut);",
+        ]
+        for sql in stmts:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(sql))
+            except Exception as e:
+                print("Aviso migración clients extended:", e)
+    elif "sqlite" in settings.DATABASE_URL:
+        for stmt in (
+            "ALTER TABLE clients ADD COLUMN paternal_last_name VARCHAR;",
+            "ALTER TABLE clients ADD COLUMN maternal_last_name VARCHAR;",
+            "ALTER TABLE clients ADD COLUMN birth_date VARCHAR(10);",
+            "ALTER TABLE clients ADD COLUMN rut VARCHAR(30);",
+        ):
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(stmt))
+            except Exception:
+                pass
+
+
+async def _migrate_product_cost_images_history():
+    if "postgresql" in settings.DATABASE_URL:
+        stmts = [
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS cost_price DOUBLE PRECISION DEFAULT 0;",
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls JSONB DEFAULT '[]'::jsonb;",
+            """
+            CREATE TABLE IF NOT EXISTS product_cost_history (
+                id VARCHAR NOT NULL PRIMARY KEY,
+                product_id VARCHAR NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+                cost_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+                changed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
+            );
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_product_cost_history_product ON product_cost_history (product_id);",
+        ]
+        for sql in stmts:
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(sql))
+            except Exception as e:
+                print("Aviso migración product cost/history:", e)
+
+
+async def _migrate_suppliers_quotes():
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    stmts = [
+        """
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id VARCHAR PRIMARY KEY,
+            store_id VARCHAR NOT NULL REFERENCES stores(id),
+            name VARCHAR(200) NOT NULL,
+            email VARCHAR(255) NOT NULL,
+            phone VARCHAR(50),
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS product_suppliers (
+            id VARCHAR PRIMARY KEY,
+            product_id VARCHAR NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            supplier_id VARCHAR NOT NULL REFERENCES suppliers(id) ON DELETE CASCADE,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc'),
+            CONSTRAINT uq_product_supplier UNIQUE (product_id, supplier_id)
+        );
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS quotation_requests (
+            id VARCHAR PRIMARY KEY,
+            store_id VARCHAR NOT NULL REFERENCES stores(id),
+            supplier_id VARCHAR NOT NULL REFERENCES suppliers(id),
+            payload JSONB DEFAULT '{}'::jsonb,
+            status VARCHAR(40) DEFAULT 'sent',
+            email_to VARCHAR(255) NOT NULL,
+            email_cc TEXT,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
+        );
+        """,
+    ]
+    for sql in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql))
+        except Exception as e:
+            print("Aviso migración suppliers/quotes:", e)
+
+
 async def _backfill_product_branch_stocks():
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:
@@ -782,6 +891,18 @@ async def init_db():
         await _migrate_product_branch_stock()
     except Exception as e:
         print("Aviso migración product_branch_stocks:", e)
+    try:
+        await _migrate_clients_extended_fields()
+    except Exception as e:
+        print("Aviso migración clients extended:", e)
+    try:
+        await _migrate_product_cost_images_history()
+    except Exception as e:
+        print("Aviso migración product cost/history:", e)
+    try:
+        await _migrate_suppliers_quotes()
+    except Exception as e:
+        print("Aviso migración suppliers/quotes:", e)
     try:
         await _backfill_product_branch_stocks()
     except Exception as e:

@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import datetime
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,7 +13,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import StoreContext, require_store_permission
-from app.core.permissions import GESTIONAR_CLIENTES, VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS
+from app.core.permissions import GESTIONAR_CLIENTES, VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS, VER_HISTORIAL_CLIENTE, GESTIONAR_NOTAS_CLIENTE
 from app.models.client import Client
 from app.models.meeting import Meeting
 from app.models.product import Product
@@ -20,6 +21,8 @@ from app.models.purchase import Purchase
 from app.models.scheduling import Appointment, Branch, Professional, Service
 from app.models.ticket import Ticket
 from app.models.user import User
+from app.models.store import Store
+from app.services.mail import mail_configured, send_html_email
 
 router = APIRouter()
 
@@ -31,8 +34,12 @@ MAX_CLIENTS_AI_IMPORT = 120
 
 class ClientCreate(BaseModel):
     name: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
+    paternal_last_name: str
+    maternal_last_name: str
+    birth_date: str
+    rut: Optional[str] = None
+    email: str
+    phone: str
     address: Optional[str] = None
     notes: Optional[str] = None
     preferences: dict = {}
@@ -41,6 +48,10 @@ class ClientCreate(BaseModel):
 
 class ClientImportAIRequest(BaseModel):
     raw_text: str = Field(..., min_length=1, max_length=MAX_IMPORT_CHARS)
+
+
+class WorkerNoteCreate(BaseModel):
+    note: str = Field(..., min_length=1, max_length=2000)
 
 
 def _extract_json_array(text: str) -> list[Any]:
@@ -80,7 +91,10 @@ def _normalize_import_row(row: Any) -> Optional[dict[str, Any]]:
         return None
     prefs = row.get("preferences") if isinstance(row.get("preferences"), dict) else {}
     cf = row.get("custom_fields") if isinstance(row.get("custom_fields"), dict) else {}
-    known = {"name", "email", "phone", "address", "notes", "preferences", "custom_fields"}
+    known = {
+        "name", "paternal_last_name", "maternal_last_name", "birth_date", "rut",
+        "email", "phone", "address", "notes", "preferences", "custom_fields"
+    }
     for k, v in row.items():
         if k in known:
             continue
@@ -93,6 +107,10 @@ def _normalize_import_row(row: Any) -> Optional[dict[str, Any]]:
             cf[key] = str(v)[:2000]
     return {
         "name": name,
+        "paternal_last_name": _str_or_none(row.get("paternal_last_name"), 150) or "—",
+        "maternal_last_name": _str_or_none(row.get("maternal_last_name"), 150) or "—",
+        "birth_date": _str_or_none(row.get("birth_date"), 10) or "1900-01-01",
+        "rut": _str_or_none(row.get("rut"), 30),
         "email": _str_or_none(row.get("email"), 320),
         "phone": _str_or_none(row.get("phone"), 80),
         "address": _str_or_none(row.get("address"), 500),
@@ -163,8 +181,12 @@ Reglas:
             continue
         data_create = ClientCreate(
             name=norm["name"],
-            email=norm["email"],
-            phone=norm["phone"],
+            paternal_last_name=norm["paternal_last_name"],
+            maternal_last_name=norm["maternal_last_name"],
+            birth_date=norm["birth_date"],
+            rut=norm["rut"],
+            email=norm["email"] or "sin-email@local.invalid",
+            phone=norm["phone"] or "000000000",
             address=norm["address"],
             notes=norm["notes"],
             preferences=norm["preferences"],
@@ -183,10 +205,13 @@ async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = N
     query = select(Client).where(Client.store_id == ctx.store_id)
     if search and search.strip():
         term = f"%{search.strip()}%"
+        normalized_search = re.sub(r"[^0-9kK]", "", search.strip())
         filt = or_(
             Client.name.ilike(term),
             Client.email.ilike(term),
             Client.phone.ilike(term),
+            Client.rut.ilike(term),
+            Client.rut.ilike(f"%{normalized_search}%"),
         )
         count_stmt = count_stmt.where(filt)
         query = query.where(filt)
@@ -199,6 +224,10 @@ async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = N
             {
                 "id": c.id,
                 "name": c.name,
+                "paternal_last_name": c.paternal_last_name,
+                "maternal_last_name": c.maternal_last_name,
+                "birth_date": c.birth_date,
+                "rut": c.rut,
                 "email": c.email,
                 "phone": c.phone,
                 "address": c.address,
@@ -215,6 +244,19 @@ async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = N
 async def create_client(data: ClientCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES))):
     client = Client(store_id=ctx.store_id, **data.model_dump())
     db.add(client)
+    if mail_configured() and data.email:
+        store_row = await db.get(Store, ctx.store_id)
+        store_name = store_row.name if store_row else "tu tienda"
+        full_name = f"{data.name} {data.paternal_last_name} {data.maternal_last_name}".strip()
+        send_html_email(
+            data.email,
+            "Registro confirmado",
+            (
+                f"<p>Hola {full_name},</p>"
+                f"<p>Tu registro fue confirmado correctamente en <strong>{store_name}</strong>.</p>"
+                "<p>Gracias por confiar en nosotros.</p>"
+            ),
+        )
     return {"id": client.id, "name": client.name}
 
 @router.get("/{client_id}")
@@ -223,7 +265,21 @@ async def get_client(client_id: str, db: AsyncSession = Depends(get_db), current
     client = result.scalar_one_or_none()
     if not client:
         raise HTTPException(404, "Client not found")
-    return {"id": client.id, "name": client.name, "email": client.email, "phone": client.phone, "address": client.address, "notes": client.notes, "preferences": client.preferences, "custom_fields": client.custom_fields, "created_at": client.created_at}
+    return {
+        "id": client.id,
+        "name": client.name,
+        "paternal_last_name": client.paternal_last_name,
+        "maternal_last_name": client.maternal_last_name,
+        "birth_date": client.birth_date,
+        "rut": client.rut,
+        "email": client.email,
+        "phone": client.phone,
+        "address": client.address,
+        "notes": client.notes,
+        "preferences": client.preferences,
+        "custom_fields": client.custom_fields,
+        "created_at": client.created_at,
+    }
 
 
 @router.get("/{client_id}/activity")
@@ -231,7 +287,7 @@ async def get_client_activity(
     client_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store_permission(VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS)),
+    ctx: StoreContext = Depends(require_store_permission(VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS, VER_HISTORIAL_CLIENTE)),
 ):
     """Historial unificado: citas/reservas (con profesional aunque esté inactivo), compras, tickets y reuniones."""
     result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
@@ -337,6 +393,10 @@ async def get_client_activity(
         "client": {
             "id": client.id,
             "name": client.name,
+            "paternal_last_name": client.paternal_last_name,
+            "maternal_last_name": client.maternal_last_name,
+            "birth_date": client.birth_date,
+            "rut": client.rut,
             "email": client.email,
             "phone": client.phone,
             "address": client.address,
@@ -358,6 +418,41 @@ async def update_client(client_id: str, data: ClientCreate, db: AsyncSession = D
     for k, v in data.model_dump().items():
         setattr(client, k, v)
     return {"id": client.id, "name": client.name}
+
+
+@router.get("/{client_id}/worker-notes")
+async def get_worker_notes(
+    client_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(VER_HISTORIAL_CLIENTE, VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS)),
+):
+    result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(404, "Client not found")
+    notes = (client.custom_fields or {}).get("worker_notes") if isinstance(client.custom_fields, dict) else []
+    return {"items": notes if isinstance(notes, list) else []}
+
+
+@router.post("/{client_id}/worker-notes")
+async def add_worker_note(
+    client_id: str,
+    data: WorkerNoteCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(GESTIONAR_NOTAS_CLIENTE)),
+):
+    result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
+    client = result.scalar_one_or_none()
+    if not client:
+        raise HTTPException(404, "Client not found")
+    cf = dict(client.custom_fields or {})
+    notes = cf.get("worker_notes") if isinstance(cf.get("worker_notes"), list) else []
+    notes.append({"note": data.note.strip(), "user": current_user.name or current_user.email, "at": datetime.utcnow().isoformat()})
+    cf["worker_notes"] = notes[-100:]
+    client.custom_fields = cf
+    return {"ok": True}
 
 @router.delete("/{client_id}")
 async def delete_client(client_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES))):

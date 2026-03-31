@@ -125,6 +125,7 @@ export default function StoresPage() {
   const [configWorkflowNotes, setConfigWorkflowNotes] = useState("");
   const [configChairCount, setConfigChairCount] = useState(0);
   const [configRoomCount, setConfigRoomCount] = useState(0);
+  const [platformMapProvider, setPlatformMapProvider] = useState<"google" | "mapbox">("google");
   const [storeProfile, setStoreProfile] = useState<StoreProfile>(() => emptyStoreProfile());
   const [profileConfig, setProfileConfig] = useState<StoreProfile>(() => emptyStoreProfile());
   /** Paso de listado de clientes: omitir o pegar texto / CSV para IA */
@@ -181,6 +182,8 @@ export default function StoresPage() {
     setConfigChairCount(typeof loc.chair_count === "number" ? loc.chair_count : Number(loc.chair_count) || 0);
     setConfigRoomCount(typeof loc.room_count === "number" ? loc.room_count : Number(loc.room_count) || 0);
     setProfileConfig(mergeStoreProfileFromApi(configStore.settings?.store_profile));
+    const platformCfg = (configStore.settings?.platform as Record<string, string>) || {};
+    setPlatformMapProvider(platformCfg.map_provider === "mapbox" ? "mapbox" : "google");
   }, [configStore]);
 
   const create = useMutation({
@@ -285,10 +288,17 @@ export default function StoresPage() {
               chair_count: Math.max(0, Math.min(200, configChairCount)),
               room_count: Math.max(0, Math.min(100, configRoomCount)),
             },
+            platform: {
+              ...((configStore.settings?.platform as Record<string, string>) || {}),
+              map_provider: platformMapProvider,
+            },
           },
         },
         { headers: { "X-Store-Id": configStore.id } }
       );
+      if (canCreateStores) {
+        await api.patch("/stores/platform/map-provider", { map_provider: platformMapProvider });
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-stores"] });
@@ -426,6 +436,28 @@ export default function StoresPage() {
                 onLocation={(location_public) => setStoreProfile((p) => ({ ...p, location_public }))}
                 onHorarios={(horarios) => setStoreProfile((p) => ({ ...p, horarios }))}
               />
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+                <p className="mb-2 text-xs font-medium text-slate-600">
+                  Mapa de ubicación ({platformMapProvider === "mapbox" ? "Mapbox" : "Google"})
+                </p>
+                {platformMapProvider === "google" ? (
+                  <iframe
+                    title="store-map-google"
+                    className="h-48 w-full rounded-lg border-0"
+                    loading="lazy"
+                    src={`https://www.google.com/maps?q=${encodeURIComponent(
+                      `${storeProfile.location_public.direccion_atencion} ${storeProfile.location_public.comuna} Chile`
+                    )}&output=embed`}
+                  />
+                ) : (
+                  <iframe
+                    title="store-map-mapbox"
+                    className="h-48 w-full rounded-lg border-0"
+                    loading="lazy"
+                    src="https://api.mapbox.com/styles/v1/mapbox/streets-v11.html?title=false&zoomwheel=false#10/-33.45/-70.66"
+                  />
+                )}
+              </div>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setWizardStep(2)} className="btn-ghost">
                   Atrás
@@ -908,6 +940,14 @@ export default function StoresPage() {
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Proveedor de mapa global</label>
+                <select value={platformMapProvider} onChange={(e) => setPlatformMapProvider(e.target.value as "google" | "mapbox")} className="input-field">
+                  <option value="google">Google Maps</option>
+                  <option value="mapbox">Mapbox</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-1">Aplicará para registro de clientas y tiendas.</p>
+              </div>
               <div>
                 <label className="text-xs text-slate-500 mb-1 block">Tono del asistente</label>
                 <input value={tone} onChange={(e) => setTone(e.target.value)} className="input-field" placeholder="professional" />

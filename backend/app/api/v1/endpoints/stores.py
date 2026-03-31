@@ -36,6 +36,10 @@ class StoreUpdate(BaseModel):
     settings: Optional[dict] = None
 
 
+class PlatformMapProviderBody(BaseModel):
+    map_provider: str = Field(..., pattern="^(google|mapbox)$")
+
+
 class MemberPermissionsBody(BaseModel):
     """null = quitar override y usar permisos por defecto del rol."""
     permissions: Optional[list[str]] = None
@@ -198,3 +202,32 @@ async def update_store(
     if data.settings is not None:
         store.settings = _deep_merge_settings(dict(store.settings or {}), data.settings)
     return {"id": store.id, "name": store.name, "settings": store.settings}
+
+
+@router.get("/platform/map-provider")
+async def get_platform_map_provider(
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_global_admin),
+):
+    row = await db.execute(select(Store).order_by(Store.created_at).limit(1))
+    store = row.scalar_one_or_none()
+    provider = "google"
+    if store and isinstance(store.settings, dict):
+        provider = str((store.settings.get("platform") or {}).get("map_provider") or "google")
+    return {"map_provider": provider}
+
+
+@router.patch("/platform/map-provider")
+async def set_platform_map_provider(
+    data: PlatformMapProviderBody,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_global_admin),
+):
+    rows = (await db.execute(select(Store))).scalars().all()
+    for store in rows:
+        settings = dict(store.settings or {})
+        platform_cfg = dict(settings.get("platform") or {})
+        platform_cfg["map_provider"] = data.map_provider
+        settings["platform"] = platform_cfg
+        store.settings = settings
+    return {"ok": True, "updated_stores": len(rows), "map_provider": data.map_provider}

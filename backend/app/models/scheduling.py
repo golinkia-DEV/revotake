@@ -111,6 +111,12 @@ class Professional(Base):
     store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
+    first_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    paternal_last_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    maternal_last_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    birth_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    hire_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # Invitación: hasta que acepta correo y define contraseña, sin user_id

@@ -6,6 +6,7 @@ import {
   Search,
   Mail,
   Phone,
+  MessageCircle,
   Trash2,
   User,
   CalendarDays,
@@ -20,10 +21,15 @@ import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
+import { getStoreId } from "@/lib/store";
 
 interface ClientItem {
   id: string;
   name: string;
+  paternal_last_name?: string | null;
+  maternal_last_name?: string | null;
+  birth_date?: string | null;
+  rut?: string | null;
   email: string | null;
   phone: string | null;
   address?: string | null;
@@ -115,14 +121,27 @@ function formatMoneyCl(value: number) {
   );
 }
 
-const EMPTY_FORM = { name: "", email: "", phone: "", address: "", notes: "", next_contact_date: "" };
+const EMPTY_FORM = {
+  name: "",
+  paternal_last_name: "",
+  maternal_last_name: "",
+  birth_date: "",
+  rut: "",
+  email: "",
+  phone: "",
+  address: "",
+  notes: "",
+  next_contact_date: "",
+};
 
 export default function ClientsPage() {
   const qc = useQueryClient();
+  const storeId = typeof window !== "undefined" ? getStoreId() : null;
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [detailClientId, setDetailClientId] = useState<string | null>(null);
+  const [workerNote, setWorkerNote] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -135,10 +154,23 @@ export default function ClientsPage() {
     queryKey: ["clients", debouncedSearch],
     queryFn: () => api.get(`/clients/?search=${encodeURIComponent(debouncedSearch)}&limit=100`).then((r) => r.data),
   });
+  const { data: storesData } = useQuery({
+    queryKey: ["my-stores-clients-map"],
+    queryFn: () => api.get("/stores/").then((r) => r.data),
+    enabled: !!storeId,
+  });
+  const selectedStore = storesData?.items?.find((s: { id: string; settings?: Record<string, unknown> }) => s.id === storeId);
+  const mapProvider = ((selectedStore?.settings?.platform as Record<string, string> | undefined)?.map_provider ?? "google") as "google" | "mapbox";
+  const mapQuery = encodeURIComponent(form.address || "Santiago Chile");
 
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ["client-activity", detailClientId],
     queryFn: () => api.get<ClientActivityResponse>(`/clients/${detailClientId}/activity`).then((r) => r.data),
+    enabled: Boolean(detailClientId),
+  });
+  const { data: workerNotes } = useQuery({
+    queryKey: ["client-worker-notes", detailClientId],
+    queryFn: () => api.get(`/clients/${detailClientId}/worker-notes`).then((r) => r.data),
     enabled: Boolean(detailClientId),
   });
 
@@ -152,6 +184,10 @@ export default function ClientsPage() {
     setEditingId(c.id);
     setForm({
       name: c.name ?? "",
+      paternal_last_name: c.paternal_last_name ?? "",
+      maternal_last_name: c.maternal_last_name ?? "",
+      birth_date: c.birth_date ?? "",
+      rut: c.rut ?? "",
       email: c.email ?? "",
       phone: c.phone ?? "",
       address: c.address ?? "",
@@ -182,6 +218,10 @@ export default function ClientsPage() {
     openEdit({
       id: c.id,
       name: c.name,
+      paternal_last_name: c.paternal_last_name ?? null,
+      maternal_last_name: c.maternal_last_name ?? null,
+      birth_date: c.birth_date ?? null,
+      rut: c.rut ?? null,
       email: c.email,
       phone: c.phone,
       address: c.address ?? null,
@@ -229,6 +269,15 @@ export default function ClientsPage() {
       toast.success("Cliente eliminado");
     },
   });
+  const addNote = useMutation({
+    mutationFn: (clientId: string) => api.post(`/clients/${clientId}/worker-notes`, { note: workerNote }),
+    onSuccess: () => {
+      setWorkerNote("");
+      qc.invalidateQueries({ queryKey: ["client-worker-notes", detailClientId] });
+      toast.success("Nota guardada");
+    },
+    onError: () => toast.error("No se pudo guardar la nota"),
+  });
 
   const isPending = create.isPending || update.isPending;
 
@@ -249,7 +298,7 @@ export default function ClientsPage() {
           <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">Clientes</h1>
           <p className="mt-1 text-slate-500">{data?.total ?? 0} clientes registrados</p>
           <p className="mt-2 max-w-xl text-sm text-slate-600">
-            Alta sencilla: nombre obligatorio; el resto es opcional. Tocá una tarjeta para ver el <strong>historial</strong> en la tienda (reservas, compras,
+            Alta completa: nombre, apellidos, nacimiento, email y teléfono obligatorios. Tocá una tarjeta para ver el <strong>historial</strong> en la tienda (reservas, compras,
             tickets y reuniones) y el profesional que atendió cada cita — aunque esté desactivado, el nombre se conserva en el registro.
           </p>
         </div>
@@ -278,16 +327,41 @@ export default function ClientsPage() {
               placeholder="Nombre *"
             />
             <input
+              value={form.paternal_last_name}
+              onChange={(e) => setForm((f) => ({ ...f, paternal_last_name: e.target.value }))}
+              className="input-field"
+              placeholder="Apellido paterno *"
+            />
+            <input
+              value={form.maternal_last_name}
+              onChange={(e) => setForm((f) => ({ ...f, maternal_last_name: e.target.value }))}
+              className="input-field"
+              placeholder="Apellido materno *"
+            />
+            <input
+              type="date"
+              value={form.birth_date}
+              onChange={(e) => setForm((f) => ({ ...f, birth_date: e.target.value }))}
+              className="input-field"
+              placeholder="Fecha nacimiento *"
+            />
+            <input
+              value={form.rut}
+              onChange={(e) => setForm((f) => ({ ...f, rut: e.target.value }))}
+              className="input-field"
+              placeholder="RUT"
+            />
+            <input
               value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               className="input-field"
-              placeholder="Email"
+              placeholder="Email *"
             />
             <input
               value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
               className="input-field"
-              placeholder="Teléfono"
+              placeholder="Teléfono *"
             />
             <input
               value={form.address}
@@ -295,6 +369,24 @@ export default function ClientsPage() {
               className="input-field"
               placeholder="Dirección"
             />
+            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+              <p className="mb-2 text-xs font-medium text-slate-600">Mapa ({mapProvider === "mapbox" ? "Mapbox" : "Google"})</p>
+              {mapProvider === "google" ? (
+                <iframe
+                  title="mapa-google"
+                  className="h-44 w-full rounded-lg border-0"
+                  loading="lazy"
+                  src={`https://www.google.com/maps?q=${mapQuery}&output=embed`}
+                />
+              ) : (
+                <iframe
+                  title="mapa-mapbox"
+                  className="h-44 w-full rounded-lg border-0"
+                  loading="lazy"
+                  src={`https://api.mapbox.com/styles/v1/mapbox/streets-v11.html?title=false&zoomwheel=false#10/-33.45/-70.66`}
+                />
+              )}
+            </div>
             <textarea
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
@@ -318,7 +410,15 @@ export default function ClientsPage() {
           <div className="mt-4 flex gap-3">
             <button
               type="button"
-              disabled={!form.name.trim() || isPending}
+              disabled={
+                !form.name.trim() ||
+                !form.paternal_last_name.trim() ||
+                !form.maternal_last_name.trim() ||
+                !form.birth_date.trim() ||
+                !form.email.trim() ||
+                !form.phone.trim() ||
+                isPending
+              }
               onClick={() => editingId ? update.mutate(form) : create.mutate(form)}
               className="btn-primary disabled:opacity-50"
             >
@@ -336,7 +436,7 @@ export default function ClientsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="input-field rounded-full pl-11"
-          placeholder="Buscar clientes..."
+          placeholder="Buscar por nombre, teléfono, RUT o email..."
         />
       </div>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -401,6 +501,23 @@ export default function ClientsPage() {
                 {client.phone}
               </div>
             )}
+            <div className="mt-3 flex items-center gap-2">
+              {client.phone && (
+                <>
+                  <a href={`tel:${client.phone}`} className="btn-ghost text-xs">
+                    <Phone className="mr-1 inline h-3.5 w-3.5" /> Llamar
+                  </a>
+                  <a href={`https://wa.me/${client.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" className="btn-ghost text-xs">
+                    <MessageCircle className="mr-1 inline h-3.5 w-3.5" /> WhatsApp
+                  </a>
+                </>
+              )}
+              {client.email && (
+                <a href={`mailto:${client.email}`} className="btn-ghost text-xs">
+                  <Mail className="mr-1 inline h-3.5 w-3.5" /> Email
+                </a>
+              )}
+            </div>
             {typeof client.preferences?.next_contact_date === "string" && client.preferences.next_contact_date && (
               <div className="mt-3 flex items-center gap-2 rounded-lg bg-primary/5 px-2 py-1.5 text-xs font-medium text-primary">
                 <CalendarDays className="h-3.5 w-3.5 shrink-0" />
@@ -490,6 +607,22 @@ export default function ClientsPage() {
                       </div>
 
                       <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">Actividad</p>
+                      <div className="mb-4 rounded-xl border border-slate-200 p-3">
+                        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-400">Notas internas</p>
+                        <div className="mb-2 space-y-1">
+                          {(workerNotes?.items ?? []).slice(0, 5).map((n: { note: string; user: string; at: string }, idx: number) => (
+                            <p key={`${n.at}-${idx}`} className="rounded bg-slate-50 px-2 py-1 text-xs text-slate-600">
+                              {n.note} · {n.user}
+                            </p>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <input value={workerNote} onChange={(e) => setWorkerNote(e.target.value)} className="input-field h-9 text-sm" placeholder="Agregar nota de atención..." />
+                          <button type="button" className="btn-primary text-xs" disabled={!workerNote.trim() || addNote.isPending || !detailClientId} onClick={() => detailClientId && addNote.mutate(detailClientId)}>
+                            Guardar
+                          </button>
+                        </div>
+                      </div>
                       {activityData.events.length === 0 ? (
                         <p className="text-sm text-slate-500">Aún no hay reservas, compras ni otros registros vinculados a este cliente.</p>
                       ) : (

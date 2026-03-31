@@ -346,6 +346,12 @@ async def patch_branch(
 
 class ProfessionalCreate(BaseModel):
     name: str
+    first_name: str
+    paternal_last_name: str
+    maternal_last_name: str
+    birth_date: str
+    hire_date: str
+    address: str
     email: EmailStr
     phone: str = Field(..., min_length=6, max_length=40)
     branch_ids: list[str] = Field(default_factory=list)
@@ -393,6 +399,12 @@ async def list_professionals(
             {
                 "id": p.id,
                 "name": p.name,
+                "first_name": p.first_name,
+                "paternal_last_name": p.paternal_last_name,
+                "maternal_last_name": p.maternal_last_name,
+                "birth_date": p.birth_date,
+                "hire_date": p.hire_date,
+                "address": p.address,
                 "email": p.email,
                 "phone": p.phone,
                 "user_id": p.user_id,
@@ -453,6 +465,12 @@ async def create_professional(
     p = Professional(
         store_id=ctx.store_id,
         name=data.name.strip(),
+        first_name=data.first_name.strip(),
+        paternal_last_name=data.paternal_last_name.strip(),
+        maternal_last_name=data.maternal_last_name.strip(),
+        birth_date=data.birth_date.strip(),
+        hire_date=data.hire_date.strip(),
+        address=data.address.strip(),
         email=email_norm,
         phone=phone_norm,
         user_id=None,
