@@ -38,6 +38,8 @@ class ClientCreate(BaseModel):
     maternal_last_name: str
     birth_date: str
     rut: Optional[str] = None
+    address_lat: Optional[float] = None
+    address_lng: Optional[float] = None
     email: str
     phone: str
     address: Optional[str] = None
@@ -111,6 +113,8 @@ def _normalize_import_row(row: Any) -> Optional[dict[str, Any]]:
         "maternal_last_name": _str_or_none(row.get("maternal_last_name"), 150) or "—",
         "birth_date": _str_or_none(row.get("birth_date"), 10) or "1900-01-01",
         "rut": _str_or_none(row.get("rut"), 30),
+        "address_lat": None,
+        "address_lng": None,
         "email": _str_or_none(row.get("email"), 320),
         "phone": _str_or_none(row.get("phone"), 80),
         "address": _str_or_none(row.get("address"), 500),
@@ -185,6 +189,8 @@ Reglas:
             maternal_last_name=norm["maternal_last_name"],
             birth_date=norm["birth_date"],
             rut=norm["rut"],
+            address_lat=norm["address_lat"],
+            address_lng=norm["address_lng"],
             email=norm["email"] or "sin-email@local.invalid",
             phone=norm["phone"] or "000000000",
             address=norm["address"],
@@ -228,6 +234,8 @@ async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = N
                 "maternal_last_name": c.maternal_last_name,
                 "birth_date": c.birth_date,
                 "rut": c.rut,
+                "address_lat": c.address_lat,
+                "address_lng": c.address_lng,
                 "email": c.email,
                 "phone": c.phone,
                 "address": c.address,
@@ -272,6 +280,8 @@ async def get_client(client_id: str, db: AsyncSession = Depends(get_db), current
         "maternal_last_name": client.maternal_last_name,
         "birth_date": client.birth_date,
         "rut": client.rut,
+        "address_lat": client.address_lat,
+        "address_lng": client.address_lng,
         "email": client.email,
         "phone": client.phone,
         "address": client.address,
@@ -397,6 +407,8 @@ async def get_client_activity(
             "maternal_last_name": client.maternal_last_name,
             "birth_date": client.birth_date,
             "rut": client.rut,
+            "address_lat": client.address_lat,
+            "address_lng": client.address_lng,
             "email": client.email,
             "phone": client.phone,
             "address": client.address,

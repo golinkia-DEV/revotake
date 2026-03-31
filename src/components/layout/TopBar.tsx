@@ -48,6 +48,12 @@ export default function TopBar({
     enabled: !!storeId,
     refetchInterval: 60_000,
   });
+  const { data: me } = useQuery({
+    queryKey: ["auth-me-topbar", storeId],
+    queryFn: () => api.get("/auth/me").then((r) => r.data),
+    enabled: !!storeId,
+    staleTime: 30_000,
+  });
 
   const allItems: NotificationItem[] = notifData?.items ?? [];
   const visible = allItems.filter((n) => !dismissed.has(n.id));
@@ -97,6 +103,15 @@ export default function TopBar({
       </div>
 
       <div className="flex items-center gap-0.5 sm:gap-2">
+        {me?.global_role === "platform_admin" && (
+          <Link
+            href="/dashboard"
+            className="hidden items-center gap-1 rounded-full bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 sm:inline-flex"
+          >
+            <MaterialIcon name="dashboard" className="text-base" filled />
+            Panel general
+          </Link>
+        )}
         {/* Search icon en mobile */}
         <button
           type="button"

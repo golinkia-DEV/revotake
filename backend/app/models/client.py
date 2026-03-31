@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 import uuid
 from datetime import datetime
+from sqlalchemy import Float
 
 class Client(Base):
     __tablename__ = "clients"
@@ -14,6 +15,8 @@ class Client(Base):
     maternal_last_name: Mapped[str | None] = mapped_column(String, nullable=True)
     birth_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     rut: Mapped[str | None] = mapped_column(String(30), index=True, nullable=True)
+    address_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    address_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
     email: Mapped[str | None] = mapped_column(String, nullable=True)
     phone: Mapped[str | None] = mapped_column(String, nullable=True)
     address: Mapped[str | None] = mapped_column(String, nullable=True)

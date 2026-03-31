@@ -30,6 +30,8 @@ interface ClientItem {
   maternal_last_name?: string | null;
   birth_date?: string | null;
   rut?: string | null;
+  address_lat?: number | null;
+  address_lng?: number | null;
   email: string | null;
   phone: string | null;
   address?: string | null;
@@ -127,6 +129,8 @@ const EMPTY_FORM = {
   maternal_last_name: "",
   birth_date: "",
   rut: "",
+  address_lat: "",
+  address_lng: "",
   email: "",
   phone: "",
   address: "",
@@ -162,6 +166,7 @@ export default function ClientsPage() {
   const selectedStore = storesData?.items?.find((s: { id: string; settings?: Record<string, unknown> }) => s.id === storeId);
   const mapProvider = ((selectedStore?.settings?.platform as Record<string, string> | undefined)?.map_provider ?? "google") as "google" | "mapbox";
   const mapQuery = encodeURIComponent(form.address || "Santiago Chile");
+  const mapPin = form.address_lat && form.address_lng ? `${form.address_lat},${form.address_lng}` : "";
 
   const { data: activityData, isLoading: activityLoading } = useQuery({
     queryKey: ["client-activity", detailClientId],
@@ -188,6 +193,8 @@ export default function ClientsPage() {
       maternal_last_name: c.maternal_last_name ?? "",
       birth_date: c.birth_date ?? "",
       rut: c.rut ?? "",
+      address_lat: c.address_lat != null ? String(c.address_lat) : "",
+      address_lng: c.address_lng != null ? String(c.address_lng) : "",
       email: c.email ?? "",
       phone: c.phone ?? "",
       address: c.address ?? "",
@@ -222,6 +229,8 @@ export default function ClientsPage() {
       maternal_last_name: c.maternal_last_name ?? null,
       birth_date: c.birth_date ?? null,
       rut: c.rut ?? null,
+      address_lat: c.address_lat ?? null,
+      address_lng: c.address_lng ?? null,
       email: c.email,
       phone: c.phone,
       address: c.address ?? null,
@@ -236,7 +245,9 @@ export default function ClientsPage() {
       const { next_contact_date, ...rest } = d;
       const preferences: Record<string, string> = {};
       if (next_contact_date) preferences.next_contact_date = next_contact_date;
-      return api.post("/clients/", { ...rest, preferences });
+      const address_lat = rest.address_lat.trim() ? Number(rest.address_lat) : null;
+      const address_lng = rest.address_lng.trim() ? Number(rest.address_lng) : null;
+      return api.post("/clients/", { ...rest, address_lat, address_lng, preferences });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["clients"] });
@@ -250,7 +261,9 @@ export default function ClientsPage() {
       const { next_contact_date, ...rest } = d;
       const preferences: Record<string, string> = {};
       if (next_contact_date) preferences.next_contact_date = next_contact_date;
-      return api.put(`/clients/${editingId}`, { ...rest, preferences });
+      const address_lat = rest.address_lat.trim() ? Number(rest.address_lat) : null;
+      const address_lng = rest.address_lng.trim() ? Number(rest.address_lng) : null;
+      return api.put(`/clients/${editingId}`, { ...rest, address_lat, address_lng, preferences });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["clients"] });
@@ -369,14 +382,39 @@ export default function ClientsPage() {
               className="input-field"
               placeholder="Dirección"
             />
+            <input
+              value={form.address_lat}
+              onChange={(e) => setForm((f) => ({ ...f, address_lat: e.target.value }))}
+              className="input-field"
+              placeholder="Latitud (punto domicilio)"
+            />
+            <input
+              value={form.address_lng}
+              onChange={(e) => setForm((f) => ({ ...f, address_lng: e.target.value }))}
+              className="input-field"
+              placeholder="Longitud (punto domicilio)"
+            />
             <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
               <p className="mb-2 text-xs font-medium text-slate-600">Mapa ({mapProvider === "mapbox" ? "Mapbox" : "Google"})</p>
+              <p className="mb-2 text-xs text-slate-500">Usa el mapa para ubicar la vivienda y pega latitud/longitud para registrar la dirección exacta.</p>
+              <a
+                href={
+                  mapProvider === "google"
+                    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapPin || (form.address || "Santiago Chile"))}`
+                    : `https://www.mapbox.com/search?query=${encodeURIComponent(mapPin || (form.address || "Santiago Chile"))}`
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="btn-ghost mb-2 inline-block text-xs"
+              >
+                Abrir mapa para marcar punto
+              </a>
               {mapProvider === "google" ? (
                 <iframe
                   title="mapa-google"
                   className="h-44 w-full rounded-lg border-0"
                   loading="lazy"
-                  src={`https://www.google.com/maps?q=${mapQuery}&output=embed`}
+                  src={`https://www.google.com/maps?q=${encodeURIComponent(mapPin || (form.address || "Santiago Chile"))}&output=embed`}
                 />
               ) : (
                 <iframe

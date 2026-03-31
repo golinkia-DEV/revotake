@@ -10,6 +10,7 @@ class Purchase(Base):
     store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
     client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"))
     product_id: Mapped[str] = mapped_column(ForeignKey("products.id"))
+    supplier_id: Mapped[str | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
     branch_id: Mapped[str | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     unit_price: Mapped[float] = mapped_column(Float)

@@ -726,6 +726,8 @@ async def _migrate_clients_extended_fields():
             "ALTER TABLE clients ADD COLUMN IF NOT EXISTS maternal_last_name VARCHAR;",
             "ALTER TABLE clients ADD COLUMN IF NOT EXISTS birth_date VARCHAR(10);",
             "ALTER TABLE clients ADD COLUMN IF NOT EXISTS rut VARCHAR(30);",
+            "ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_lat DOUBLE PRECISION;",
+            "ALTER TABLE clients ADD COLUMN IF NOT EXISTS address_lng DOUBLE PRECISION;",
             "CREATE INDEX IF NOT EXISTS ix_clients_rut ON clients (rut);",
         ]
         for sql in stmts:
@@ -740,6 +742,8 @@ async def _migrate_clients_extended_fields():
             "ALTER TABLE clients ADD COLUMN maternal_last_name VARCHAR;",
             "ALTER TABLE clients ADD COLUMN birth_date VARCHAR(10);",
             "ALTER TABLE clients ADD COLUMN rut VARCHAR(30);",
+            "ALTER TABLE clients ADD COLUMN address_lat FLOAT;",
+            "ALTER TABLE clients ADD COLUMN address_lng FLOAT;",
         ):
             try:
                 async with engine.begin() as conn:
@@ -780,8 +784,18 @@ async def _migrate_suppliers_quotes():
             id VARCHAR PRIMARY KEY,
             store_id VARCHAR NOT NULL REFERENCES stores(id),
             name VARCHAR(200) NOT NULL,
+            legal_name VARCHAR(220),
+            rut VARCHAR(30),
+            contact_name VARCHAR(200),
             email VARCHAR(255) NOT NULL,
             phone VARCHAR(50),
+            address TEXT,
+            region VARCHAR(120),
+            city VARCHAR(120),
+            website VARCHAR(255),
+            payment_terms VARCHAR(200),
+            notes TEXT,
+            is_active BOOLEAN DEFAULT true,
             created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
         );
         """,
@@ -813,6 +827,47 @@ async def _migrate_suppliers_quotes():
                 await conn.execute(text(sql))
         except Exception as e:
             print("Aviso migración suppliers/quotes:", e)
+    alter_suppliers = [
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS legal_name VARCHAR(220);",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS rut VARCHAR(30);",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact_name VARCHAR(200);",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address TEXT;",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS region VARCHAR(120);",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS city VARCHAR(120);",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS website VARCHAR(255);",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS payment_terms VARCHAR(200);",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS notes TEXT;",
+        "ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;",
+        "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS supplier_id VARCHAR;",
+    ]
+    for sql in alter_suppliers:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql))
+        except Exception as e:
+            print("Aviso alter suppliers/purchases:", e)
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_purchases_supplier_id ON purchases (supplier_id);"))
+            await conn.execute(
+                text(
+                    """
+                    DO $body$
+                    BEGIN
+                      IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'purchases_supplier_id_fkey'
+                      ) THEN
+                        ALTER TABLE purchases
+                        ADD CONSTRAINT purchases_supplier_id_fkey
+                        FOREIGN KEY (supplier_id) REFERENCES suppliers(id);
+                      END IF;
+                    END $body$ LANGUAGE plpgsql;
+                    """
+                )
+            )
+        pass
+    except Exception as e:
+        print("Aviso FK purchases.supplier_id:", e)
 
 
 async def _backfill_product_branch_stocks():

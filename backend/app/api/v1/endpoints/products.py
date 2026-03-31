@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -15,7 +15,6 @@ from app.models.purchase import Purchase
 from app.models.client import Client
 from app.models.scheduling import Branch
 from app.models.supplier import Supplier, ProductSupplier, QuotationRequest
-from app.models.store import StoreMember, StoreMemberRole
 from app.services.mail import mail_configured, send_html_email
 from app.models.user import User
 
@@ -48,12 +47,23 @@ class SaleCreate(BaseModel):
     quantity: int
     unit_price: float
     branch_id: Optional[str] = None
+    supplier_id: Optional[str] = None
 
 
 class SupplierCreate(BaseModel):
     name: str
+    legal_name: Optional[str] = None
+    rut: Optional[str] = None
+    contact_name: Optional[str] = None
     email: str
     phone: Optional[str] = None
+    address: Optional[str] = None
+    region: Optional[str] = None
+    city: Optional[str] = None
+    website: Optional[str] = None
+    payment_terms: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: bool = True
 
 
 class ProductSuppliersBody(BaseModel):
@@ -448,6 +458,10 @@ async def record_sale(
     cr = await db.execute(select(Client.id).where(Client.id == data.client_id, Client.store_id == ctx.store_id))
     if cr.scalar_one_or_none() is None:
         raise HTTPException(400, "Cliente no pertenece a esta tienda")
+    if data.supplier_id:
+        sr = await db.execute(select(Supplier.id).where(Supplier.id == data.supplier_id, Supplier.store_id == ctx.store_id))
+        if sr.scalar_one_or_none() is None:
+            raise HTTPException(400, "Proveedor no pertenece a esta tienda")
 
     n_pbs = await db.scalar(
         select(func.count()).select_from(ProductBranchStock).where(ProductBranchStock.product_id == product.id)
@@ -484,6 +498,7 @@ async def record_sale(
         client_id=data.client_id,
         product_id=data.product_id,
         branch_id=data.branch_id if (n_pbs or 0) > 0 else None,
+        supplier_id=data.supplier_id,
         quantity=data.quantity,
         unit_price=data.unit_price,
         total=data.quantity * data.unit_price,
@@ -500,7 +515,27 @@ async def list_suppliers(
     ctx: StoreContext = Depends(require_store_permission(VER_REPORTES, REGISTRAR_VENTAS)),
 ):
     rows = (await db.execute(select(Supplier).where(Supplier.store_id == ctx.store_id).order_by(Supplier.name))).scalars().all()
-    return {"items": [{"id": s.id, "name": s.name, "email": s.email, "phone": s.phone} for s in rows]}
+    return {
+        "items": [
+            {
+                "id": s.id,
+                "name": s.name,
+                "legal_name": s.legal_name,
+                "rut": s.rut,
+                "contact_name": s.contact_name,
+                "email": s.email,
+                "phone": s.phone,
+                "address": s.address,
+                "region": s.region,
+                "city": s.city,
+                "website": s.website,
+                "payment_terms": s.payment_terms,
+                "notes": s.notes,
+                "is_active": s.is_active,
+            }
+            for s in rows
+        ]
+    }
 
 
 @router.post("/suppliers")
@@ -510,10 +545,52 @@ async def create_supplier(
     _user: User = Depends(get_current_user),
     ctx: StoreContext = Depends(require_store_permission(REGISTRAR_VENTAS)),
 ):
-    s = Supplier(store_id=ctx.store_id, name=data.name.strip(), email=data.email.strip().lower(), phone=(data.phone or "").strip() or None)
+    s = Supplier(
+        store_id=ctx.store_id,
+        name=data.name.strip(),
+        legal_name=(data.legal_name or "").strip() or None,
+        rut=(data.rut or "").strip() or None,
+        contact_name=(data.contact_name or "").strip() or None,
+        email=data.email.strip().lower(),
+        phone=(data.phone or "").strip() or None,
+        address=(data.address or "").strip() or None,
+        region=(data.region or "").strip() or None,
+        city=(data.city or "").strip() or None,
+        website=(data.website or "").strip() or None,
+        payment_terms=(data.payment_terms or "").strip() or None,
+        notes=(data.notes or "").strip() or None,
+        is_active=bool(data.is_active),
+    )
     db.add(s)
     await db.flush()
     return {"id": s.id}
+
+
+@router.patch("/suppliers/{supplier_id}")
+async def update_supplier(
+    supplier_id: str,
+    data: SupplierCreate,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(REGISTRAR_VENTAS)),
+):
+    s = (await db.execute(select(Supplier).where(Supplier.id == supplier_id, Supplier.store_id == ctx.store_id))).scalar_one_or_none()
+    if not s:
+        raise HTTPException(404, "Supplier not found")
+    s.name = data.name.strip()
+    s.legal_name = (data.legal_name or "").strip() or None
+    s.rut = (data.rut or "").strip() or None
+    s.contact_name = (data.contact_name or "").strip() or None
+    s.email = data.email.strip().lower()
+    s.phone = (data.phone or "").strip() or None
+    s.address = (data.address or "").strip() or None
+    s.region = (data.region or "").strip() or None
+    s.city = (data.city or "").strip() or None
+    s.website = (data.website or "").strip() or None
+    s.payment_terms = (data.payment_terms or "").strip() or None
+    s.notes = (data.notes or "").strip() or None
+    s.is_active = bool(data.is_active)
+    return {"ok": True}
 
 
 @router.get("/{product_id}/suppliers")
@@ -592,3 +669,110 @@ async def create_quotation_requests(
         db.add(QuotationRequest(store_id=ctx.store_id, supplier_id=sid, payload={"product_ids": [p.id for p in products]}, email_to=supplier.email, email_cc=user.email))
         sent += 1
     return {"ok": True, "sent_requests": sent}
+
+
+@router.get("/suppliers/report")
+async def suppliers_report(
+    from_date: Optional[date] = None,
+    to_date: Optional[date] = None,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES, REGISTRAR_VENTAS)),
+):
+    end_d = to_date or date.today()
+    start_d = from_date or (end_d - timedelta(days=30))
+    start_dt = datetime(start_d.year, start_d.month, start_d.day)
+    end_dt = datetime(end_d.year, end_d.month, end_d.day) + timedelta(days=1)
+
+    totals = await db.execute(
+        select(
+            Supplier.id,
+            Supplier.name,
+            func.count(Purchase.id),
+            func.coalesce(func.sum(Purchase.total), 0.0),
+            func.coalesce(func.sum(Purchase.quantity), 0),
+        )
+        .join(Purchase, Purchase.supplier_id == Supplier.id)
+        .where(
+            Supplier.store_id == ctx.store_id,
+            Purchase.store_id == ctx.store_id,
+            Purchase.sold_at >= start_dt,
+            Purchase.sold_at < end_dt,
+        )
+        .group_by(Supplier.id, Supplier.name)
+        .order_by(func.coalesce(func.sum(Purchase.total), 0.0).desc())
+    )
+    by_supplier = [
+        {
+            "supplier_id": sid,
+            "supplier_name": sname,
+            "purchases_count": int(cnt or 0),
+            "amount_total": float(total or 0),
+            "units_total": int(units or 0),
+        }
+        for sid, sname, cnt, total, units in totals.all()
+    ]
+
+    timeline_rows = await db.execute(
+        select(
+            func.date(Purchase.sold_at).label("day"),
+            Supplier.name,
+            func.coalesce(func.sum(Purchase.total), 0.0),
+        )
+        .join(Supplier, Supplier.id == Purchase.supplier_id)
+        .where(
+            Purchase.store_id == ctx.store_id,
+            Purchase.sold_at >= start_dt,
+            Purchase.sold_at < end_dt,
+        )
+        .group_by(func.date(Purchase.sold_at), Supplier.name)
+        .order_by(func.date(Purchase.sold_at))
+    )
+    timeline: dict[str, dict[str, float]] = {}
+    supplier_names = sorted({item["supplier_name"] for item in by_supplier})
+    for day, supplier_name, total in timeline_rows.all():
+        dkey = str(day)
+        row = timeline.setdefault(dkey, {"date": dkey})
+        row[supplier_name] = float(total or 0)
+    timeline_items = list(timeline.values())
+
+    top_products_rows = await db.execute(
+        select(
+            Supplier.name,
+            Product.name,
+            func.coalesce(func.sum(Purchase.quantity), 0),
+            func.coalesce(func.sum(Purchase.total), 0.0),
+        )
+        .join(Supplier, Supplier.id == Purchase.supplier_id)
+        .join(Product, Product.id == Purchase.product_id)
+        .where(
+            Purchase.store_id == ctx.store_id,
+            Purchase.sold_at >= start_dt,
+            Purchase.sold_at < end_dt,
+        )
+        .group_by(Supplier.name, Product.name)
+        .order_by(func.coalesce(func.sum(Purchase.total), 0.0).desc())
+        .limit(20)
+    )
+    top_products = [
+        {
+            "supplier_name": sname,
+            "product_name": pname,
+            "units_total": int(units or 0),
+            "amount_total": float(total or 0),
+        }
+        for sname, pname, units, total in top_products_rows.all()
+    ]
+    return {
+        "summary": {
+            "from_date": start_d.isoformat(),
+            "to_date": end_d.isoformat(),
+            "suppliers_with_purchases": len(by_supplier),
+            "purchases_count": sum(x["purchases_count"] for x in by_supplier),
+            "amount_total": sum(x["amount_total"] for x in by_supplier),
+        },
+        "by_supplier": by_supplier,
+        "timeline": timeline_items,
+        "timeline_keys": supplier_names,
+        "top_products": top_products,
+    }

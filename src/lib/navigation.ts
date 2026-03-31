@@ -70,6 +70,7 @@ const STORE_ADMIN_SECTIONS: NavSection[] = [
     title: "Gestión",
     items: [
       { href: "/products", label: "Productos a la venta", icon: "inventory_2", perm: "registrar_ventas" },
+      { href: "/proveedores", label: "Proveedores", icon: "local_shipping", perm: "registrar_ventas" },
       { href: "/settings/payments", label: "Métodos de pago", icon: "payments", filled: true, perm: "ver_reportes_pagos" },
       { href: "/ai", label: "Asistente IA", icon: "psychology", filled: true },
       { href: "/settings", label: "Configuración", icon: "settings" },
