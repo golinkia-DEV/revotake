@@ -117,11 +117,16 @@ function normalizeMemberRole(me?: AuthMe | null): string {
 function selectSections(me?: AuthMe | null): NavSection[] {
   const globalRole = me?.global_role;
   const memberRole = normalizeMemberRole(me);
-  if (globalRole === "platform_admin") return PLATFORM_ADMIN_SECTIONS;
-  if (globalRole === "platform_operator") return PLATFORM_OPERATOR_SECTIONS;
+  // Si existe contexto de tienda, priorizamos el rol de tienda/sucursal para
+  // asegurar acceso completo al menú operativo de esa tienda.
   if (memberRole === "store_admin") return STORE_ADMIN_SECTIONS;
   if (memberRole === "branch_admin") return BRANCH_ADMIN_SECTIONS;
   if (memberRole === "branch_operator") return BRANCH_OPERATOR_SECTIONS;
+  if (memberRole === "worker") return WORKER_SECTIONS;
+
+  // Sin contexto de tienda: usamos navegación de plataforma.
+  if (globalRole === "platform_admin") return PLATFORM_ADMIN_SECTIONS;
+  if (globalRole === "platform_operator") return PLATFORM_OPERATOR_SECTIONS;
   return WORKER_SECTIONS;
 }
 
