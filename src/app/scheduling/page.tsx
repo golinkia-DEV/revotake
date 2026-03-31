@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Calendar, ExternalLink, BarChart3, ClipboardList, Download, Star, TrendingUp, XCircle } from "lucide-react";
@@ -7,6 +8,7 @@ import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import { getStoreId } from "@/lib/store";
 import Link from "next/link";
+import PageSectionMenu from "@/components/ui/PageSectionMenu";
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
   pending: { label: "Pendiente", cls: "bg-slate-100 text-slate-700" },
@@ -22,6 +24,7 @@ function fmtCLP(value: number) {
 }
 
 export default function SchedulingAdminPage() {
+  const [activeSection, setActiveSection] = useState<"resumen" | "calificaciones" | "citas" | "recursos">("resumen");
   const storeId = typeof window !== "undefined" ? getStoreId() : null;
   const { data: stores } = useQuery({
     queryKey: ["stores"],
@@ -86,6 +89,19 @@ export default function SchedulingAdminPage() {
         )}
       </div>
 
+      <PageSectionMenu
+        title="Menú de agenda"
+        items={[
+          { id: "resumen", label: "Resumen" },
+          { id: "calificaciones", label: "Calificaciones" },
+          { id: "citas", label: "Próximas citas" },
+          { id: "recursos", label: "Recursos" },
+        ]}
+        activeId={activeSection}
+        onChange={(id) => setActiveSection(id as "resumen" | "calificaciones" | "citas" | "recursos")}
+      />
+
+      {activeSection === "resumen" && (
       <div className="mb-8 grid gap-4 md:grid-cols-3">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-card-hover p-5">
           <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-600">
@@ -123,7 +139,9 @@ export default function SchedulingAdminPage() {
           <p className="text-xs text-slate-500">Confirmadas: {dash?.confirmed ?? "—"}</p>
         </motion.div>
       </div>
+      )}
 
+      {activeSection === "calificaciones" && (
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -187,7 +205,10 @@ export default function SchedulingAdminPage() {
           </p>
         )}
       </motion.div>
+      )}
 
+      {activeSection === "citas" && (
+      <>
       <div className="mb-6 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-lg font-bold text-on-surface">
           <ClipboardList className="h-5 w-5 text-primary" /> Próximas citas
@@ -258,8 +279,12 @@ export default function SchedulingAdminPage() {
           );
         })}
       </div>
+      </>
+      )}
 
-      <div className="mt-10 rounded-2xl border border-amber-100 bg-amber-50/80 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+      {activeSection === "recursos" && (
+      <>
+      <div className="mt-2 rounded-2xl border border-amber-100 bg-amber-50/80 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
         <p className="text-sm text-amber-950 dark:text-amber-100">
           <strong>Trabajadoras:</strong> vinculá cada profesional a un usuario de la tienda (PATCH{" "}
           <code className="rounded bg-white/80 px-1 dark:bg-slate-800">/scheduling/professionals/&#123;id&#125;</code> con{" "}
@@ -296,6 +321,8 @@ export default function SchedulingAdminPage() {
           </Link>
         </p>
       </div>
+      </>
+      )}
     </AppLayout>
   );
 }
