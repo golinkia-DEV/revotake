@@ -7,7 +7,13 @@ from sqlalchemy import select
 from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_token
-from app.core.permissions import effective_permissions
+from app.core.permissions import (
+    effective_permissions,
+    effective_platform_permissions,
+    member_branch_scope,
+    normalize_global_role,
+    normalize_store_member_role,
+)
 from app.models.user import User, UserRole
 from app.models.store import StoreMember, StoreMemberRole, Store
 from app.models.scheduling import Professional
@@ -53,7 +59,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
         {
             "sub": user.id,
             "role": user.role.value,
-            "global_role": user.role.value,
+            "global_role": normalize_global_role(user.role),
         }
     )
     return {
@@ -64,7 +70,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
             "name": user.name,
             "email": user.email,
             "role": user.role.value,
-            "global_role": user.role.value,
+            "global_role": normalize_global_role(user.role),
         },
     }
 
@@ -94,7 +100,8 @@ async def me(
         "name": current_user.name,
         "email": current_user.email,
         "role": current_user.role.value,
-        "global_role": current_user.role.value,
+        "global_role": normalize_global_role(current_user.role),
+        "platform_permissions": sorted(effective_platform_permissions(current_user.role)),
     }
     if x_store_id:
         r = await db.execute(
@@ -109,7 +116,10 @@ async def me(
             out["store_context"] = {
                 "store_id": x_store_id,
                 "member_role": m.role.value,
+                "member_role_normalized": normalize_store_member_role(m.role),
                 "permissions": perms,
+                "branch_scope": sorted(member_branch_scope(m)),
+                "worker_role": m.worker_role,
             }
         else:
             out["store_context"] = None
@@ -139,6 +149,8 @@ async def professional_invite_preview(token: str, db: AsyncSession = Depends(get
         "store_name": st.name if st else "Tienda",
         "professional_name": p.name,
         "email": p.email,
+        "invite_member_role": p.invite_member_role or StoreMemberRole.WORKER.value,
+        "invite_worker_role": p.invite_worker_role,
     }
 
 
@@ -181,14 +193,31 @@ async def professional_invite_accept(data: ProfessionalInviteAccept, db: AsyncSe
     if sm_ex.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Conflicto de membresía en la tienda")
 
-    db.add(StoreMember(user_id=user.id, store_id=p.store_id, role=StoreMemberRole.OPERATOR))
+    invite_role_raw = (p.invite_member_role or StoreMemberRole.WORKER.value).strip()
+    try:
+        invite_role = StoreMemberRole(invite_role_raw)
+    except ValueError:
+        invite_role = StoreMemberRole.WORKER
+    invite_branch_ids = list(p.invite_branch_ids) if isinstance(p.invite_branch_ids, list) else None
+    db.add(
+        StoreMember(
+            user_id=user.id,
+            store_id=p.store_id,
+            role=invite_role,
+            branch_ids=invite_branch_ids,
+            worker_role=(p.invite_worker_role or "").strip() or None,
+        )
+    )
     p.user_id = user.id
     p.name = display_name
     p.invite_token = None
     p.invite_expires_at = None
+    p.invite_member_role = None
+    p.invite_branch_ids = None
+    p.invite_worker_role = None
 
     access = create_access_token(
-        {"sub": user.id, "role": user.role.value, "global_role": user.role.value}
+        {"sub": user.id, "role": user.role.value, "global_role": normalize_global_role(user.role)}
     )
     return {
         "access_token": access,
@@ -198,6 +227,6 @@ async def professional_invite_accept(data: ProfessionalInviteAccept, db: AsyncSe
             "name": user.name,
             "email": user.email,
             "role": user.role.value,
-            "global_role": user.role.value,
+            "global_role": normalize_global_role(user.role),
         },
     }

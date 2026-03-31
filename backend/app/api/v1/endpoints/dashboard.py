@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.database import get_db
-from app.core.deps import StoreContext, require_store
+from app.core.deps import StoreContext, require_store_permission
+from app.core.permissions import VER_REPORTES
 from app.models.client import Client
 from app.models.ticket import Ticket, TicketStatus
 from app.models.product import Product
@@ -12,7 +13,7 @@ from datetime import datetime, timedelta
 router = APIRouter()
 
 @router.get("/stats")
-async def get_stats(db: AsyncSession = Depends(get_db), ctx: StoreContext = Depends(require_store)):
+async def get_stats(db: AsyncSession = Depends(get_db), ctx: StoreContext = Depends(require_store_permission(VER_REPORTES))):
     sid = ctx.store_id
     total_clients = await db.execute(select(func.count(Client.id)).where(Client.store_id == sid))
     total_tickets = await db.execute(select(func.count(Ticket.id)).where(Ticket.store_id == sid))

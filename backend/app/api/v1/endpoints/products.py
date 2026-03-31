@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.database import get_db
-from app.core.deps import StoreContext, require_store
+from app.core.deps import StoreContext, ensure_branch_in_scope, require_store_permission
+from app.core.permissions import EXPORTAR_REGISTROS, REGISTRAR_VENTAS, VER_REPORTES
 from app.models.product import Product, ProductBranchStock
 from app.models.purchase import Purchase
 from app.models.client import Client
@@ -160,7 +161,7 @@ async def recalculate_stock_status(product: Product, db: AsyncSession):
 async def list_branches_for_stock(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES, REGISTRAR_VENTAS)),
 ):
     """Sedes activas de la tienda para configurar inventario (sin requerir permisos de agenda)."""
     branches = await _store_branches(db, ctx.store_id)
@@ -171,7 +172,7 @@ async def list_branches_for_stock(
 async def list_products(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES, REGISTRAR_VENTAS)),
 ):
     result = await db.execute(select(Product).where(Product.store_id == ctx.store_id).order_by(Product.name))
     products = result.scalars().all()
@@ -201,7 +202,7 @@ async def list_products(
 async def stock_alerts(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES)),
 ):
     result = await db.execute(
         select(Product).where(Product.store_id == ctx.store_id, Product.stock_status.in_(["low", "critical"]))
@@ -230,7 +231,7 @@ async def get_product(
     product_id: str,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_REPORTES, REGISTRAR_VENTAS)),
 ):
     result = await db.execute(select(Product).where(Product.id == product_id, Product.store_id == ctx.store_id))
     product = result.scalar_one_or_none()
@@ -259,7 +260,7 @@ async def create_product(
     data: ProductCreate,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(REGISTRAR_VENTAS)),
 ):
     body = data.model_dump(exclude={"branch_stocks"})
     product = Product(store_id=ctx.store_id, **body)
@@ -276,7 +277,7 @@ async def update_product(
     data: ProductCreate,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(REGISTRAR_VENTAS)),
 ):
     result = await db.execute(select(Product).where(Product.id == product_id, Product.store_id == ctx.store_id))
     product = result.scalar_one_or_none()
@@ -305,7 +306,7 @@ async def update_product(
 async def branch_stock_report(
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(EXPORTAR_REGISTROS, VER_REPORTES)),
 ):
     """Stock total y ventas últimos 30 días agrupados por sede."""
     branches = await _store_branches(db, ctx.store_id)
@@ -384,7 +385,7 @@ async def record_sale(
     data: SaleCreate,
     db: AsyncSession = Depends(get_db),
     _user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(REGISTRAR_VENTAS)),
 ):
     product_result = await db.execute(
         select(Product).where(Product.id == data.product_id, Product.store_id == ctx.store_id)
@@ -402,6 +403,7 @@ async def record_sale(
     if (n_pbs or 0) > 0:
         if not data.branch_id:
             raise HTTPException(400, "Indicá la sede (branch_id) para descontar el stock.")
+        ensure_branch_in_scope(ctx, data.branch_id)
         br_ok = await db.execute(
             select(Branch.id).where(Branch.id == data.branch_id, Branch.store_id == ctx.store_id, Branch.is_active.is_(True))
         )

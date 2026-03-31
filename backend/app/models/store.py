@@ -9,11 +9,21 @@ from app.core.database import Base
 
 
 class StoreMemberRole(str, enum.Enum):
-    """Rol dentro de una tienda (comparable a AgendaPro)."""
+    """Rol dentro de una tienda/sucursal.
+
+    Legacy soportado:
+    - admin/seller/operator
+    Nuevos:
+    - store_admin/branch_admin/branch_operator/worker
+    """
 
     ADMIN = "admin"  # Gerente de tienda
     SELLER = "seller"  # Recepcionista
     OPERATOR = "operator"  # Trabajador / profesional de piso
+    STORE_ADMIN = "store_admin"
+    BRANCH_ADMIN = "branch_admin"
+    BRANCH_OPERATOR = "branch_operator"
+    WORKER = "worker"
 
 
 class Store(Base):
@@ -37,6 +47,10 @@ class StoreMember(Base):
     store_id: Mapped[str] = mapped_column(ForeignKey("stores.id"), index=True)
     role: Mapped[StoreMemberRole] = mapped_column(SAEnum(StoreMemberRole), default=StoreMemberRole.SELLER)
     permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Scope por sucursal: null/vacío = toda la tienda; lista = sucursales permitidas.
+    branch_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Subrol funcional para trabajador (peluquera, asistente, etc.).
+    worker_role: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     user: Mapped["User"] = relationship("User", back_populates="store_memberships")
     store: Mapped["Store"] = relationship("Store", back_populates="members")

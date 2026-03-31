@@ -116,6 +116,9 @@ class Professional(Base):
     # Invitación: hasta que acepta correo y define contraseña, sin user_id
     invite_token: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     invite_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    invite_member_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    invite_branch_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    invite_worker_role: Mapped[str | None] = mapped_column(String(80), nullable=True)
     # % único sobre ventas de productos (inventario) para este profesional; null = sin comisión productos
     product_commission_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

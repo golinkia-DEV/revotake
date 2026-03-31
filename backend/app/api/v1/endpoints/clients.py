@@ -11,7 +11,8 @@ from typing import Any, Optional
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import StoreContext, require_store
+from app.core.deps import StoreContext, require_store_permission
+from app.core.permissions import GESTIONAR_CLIENTES, VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS
 from app.models.client import Client
 from app.models.meeting import Meeting
 from app.models.product import Product
@@ -106,7 +107,7 @@ async def import_clients_ai(
     data: ClientImportAIRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES)),
 ):
     """Parsea texto/Excel pegado con IA y crea perfiles de cliente en la tienda actual."""
     if not settings.ANTHROPIC_API_KEY:
@@ -176,7 +177,7 @@ Reglas:
     return {"created": created, "skipped_rows": skipped, "parsed_from_model": len(items)}
 
 @router.get("/")
-async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS))):
     from sqlalchemy import or_
     count_stmt = select(func.count(Client.id)).where(Client.store_id == ctx.store_id)
     query = select(Client).where(Client.store_id == ctx.store_id)
@@ -211,13 +212,13 @@ async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = N
     }
 
 @router.post("/")
-async def create_client(data: ClientCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def create_client(data: ClientCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES))):
     client = Client(store_id=ctx.store_id, **data.model_dump())
     db.add(client)
     return {"id": client.id, "name": client.name}
 
 @router.get("/{client_id}")
-async def get_client(client_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def get_client(client_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS))):
     result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
     client = result.scalar_one_or_none()
     if not client:
@@ -230,7 +231,7 @@ async def get_client_activity(
     client_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    ctx: StoreContext = Depends(require_store),
+    ctx: StoreContext = Depends(require_store_permission(VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS)),
 ):
     """Historial unificado: citas/reservas (con profesional aunque esté inactivo), compras, tickets y reuniones."""
     result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
@@ -349,7 +350,7 @@ async def get_client_activity(
 
 
 @router.put("/{client_id}")
-async def update_client(client_id: str, data: ClientCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def update_client(client_id: str, data: ClientCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES))):
     result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
     client = result.scalar_one_or_none()
     if not client:
@@ -359,7 +360,7 @@ async def update_client(client_id: str, data: ClientCreate, db: AsyncSession = D
     return {"id": client.id, "name": client.name}
 
 @router.delete("/{client_id}")
-async def delete_client(client_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def delete_client(client_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES))):
     result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
     client = result.scalar_one_or_none()
     if not client:

@@ -38,17 +38,42 @@ async def _migrate_permissions_column_and_userrole_client():
             await conn.execute(
                 text("ALTER TABLE store_members ADD COLUMN IF NOT EXISTS permissions JSONB;")
             )
+            await conn.execute(
+                text("ALTER TABLE store_members ADD COLUMN IF NOT EXISTS branch_ids JSONB;")
+            )
+            await conn.execute(
+                text("ALTER TABLE store_members ADD COLUMN IF NOT EXISTS worker_role VARCHAR(80);")
+            )
         try:
             async with engine.begin() as conn:
                 await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'client';"))
+                await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'platform_admin';"))
+                await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'platform_operator';"))
         except Exception as e:
             print("Aviso migración userrole (client):", e)
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("ALTER TYPE storememberrole ADD VALUE IF NOT EXISTS 'store_admin';"))
+                await conn.execute(text("ALTER TYPE storememberrole ADD VALUE IF NOT EXISTS 'branch_admin';"))
+                await conn.execute(text("ALTER TYPE storememberrole ADD VALUE IF NOT EXISTS 'branch_operator';"))
+                await conn.execute(text("ALTER TYPE storememberrole ADD VALUE IF NOT EXISTS 'worker';"))
+        except Exception as e:
+            print("Aviso migración storememberrole (new roles):", e)
     elif "sqlite" in settings.DATABASE_URL:
         try:
             async with engine.begin() as conn:
                 await conn.execute(text("ALTER TABLE store_members ADD COLUMN permissions JSON;"))
         except Exception as e:
             print("Aviso migración store_members.permissions (sqlite):", e)
+        for stmt in (
+            "ALTER TABLE store_members ADD COLUMN branch_ids JSON;",
+            "ALTER TABLE store_members ADD COLUMN worker_role VARCHAR(80);",
+        ):
+            try:
+                async with engine.begin() as conn:
+                    await conn.execute(text(stmt))
+            except Exception:
+                pass
 
 
 async def _migrate_professional_invite_and_commissions():
@@ -58,6 +83,9 @@ async def _migrate_professional_invite_and_commissions():
             await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS phone VARCHAR(40);"))
             await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_token VARCHAR(64);"))
             await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_expires_at TIMESTAMP;"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_member_role VARCHAR(40);"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_branch_ids JSONB;"))
+            await conn.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS invite_worker_role VARCHAR(80);"))
             await conn.execute(
                 text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS product_commission_percent DOUBLE PRECISION;")
             )
@@ -81,6 +109,9 @@ async def _migrate_professional_invite_and_commissions():
             "ALTER TABLE professionals ADD COLUMN phone VARCHAR(40);",
             "ALTER TABLE professionals ADD COLUMN invite_token VARCHAR(64);",
             "ALTER TABLE professionals ADD COLUMN invite_expires_at TIMESTAMP;",
+            "ALTER TABLE professionals ADD COLUMN invite_member_role VARCHAR(40);",
+            "ALTER TABLE professionals ADD COLUMN invite_branch_ids JSON;",
+            "ALTER TABLE professionals ADD COLUMN invite_worker_role VARCHAR(80);",
             "ALTER TABLE professionals ADD COLUMN product_commission_percent FLOAT;",
             "ALTER TABLE professional_services ADD COLUMN commission_percent FLOAT;",
         ):

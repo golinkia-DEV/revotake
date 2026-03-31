@@ -5,7 +5,8 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from app.core.database import get_db
-from app.core.deps import StoreContext, require_store
+from app.core.deps import StoreContext, require_store_permission
+from app.core.permissions import GESTIONAR_CLIENTES, VER_REPORTES
 from app.models.ticket import Ticket, TicketType, TicketStatus
 from app.models.client import Client
 from app.models.user import User
@@ -40,7 +41,7 @@ async def _ensure_client_store(db: AsyncSession, client_id: str, store_id: str) 
     return r.scalar_one_or_none() is not None
 
 @router.get("/")
-async def list_tickets(status: Optional[TicketStatus] = None, type: Optional[TicketType] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def list_tickets(status: Optional[TicketStatus] = None, type: Optional[TicketType] = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES, VER_REPORTES))):
     query = select(Ticket).where(Ticket.store_id == ctx.store_id)
     if status:
         query = query.where(Ticket.status == status)
@@ -52,7 +53,7 @@ async def list_tickets(status: Optional[TicketStatus] = None, type: Optional[Tic
     return {"items": [{"id": t.id, "title": t.title, "type": t.type, "status": t.status, "priority": t.priority, "client_id": t.client_id, "due_date": t.due_date, "created_at": t.created_at} for t in tickets]}
 
 @router.get("/kanban")
-async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES, VER_REPORTES))):
     result = await db.execute(select(Ticket).where(Ticket.store_id == ctx.store_id).order_by(Ticket.created_at.desc()))
     tickets = result.scalars().all()
     board = {}
@@ -75,7 +76,7 @@ async def kanban_board(db: AsyncSession = Depends(get_db), current_user: User = 
 
 
 @router.get("/{ticket_id}")
-async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES, VER_REPORTES))):
     result = await db.execute(select(Ticket).where(Ticket.id == ticket_id, Ticket.store_id == ctx.store_id))
     ticket = result.scalar_one_or_none()
     if not ticket:
@@ -97,7 +98,7 @@ async def get_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current
 
 
 @router.post("/")
-async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES))):
     if data.client_id and not await _ensure_client_store(db, data.client_id, ctx.store_id):
         raise HTTPException(400, "Cliente no pertenece a esta tienda")
     ticket = Ticket(store_id=ctx.store_id, **data.model_dump())
@@ -105,7 +106,7 @@ async def create_ticket(data: TicketCreate, db: AsyncSession = Depends(get_db), 
     return {"id": ticket.id, "title": ticket.title, "status": ticket.status}
 
 @router.put("/{ticket_id}")
-async def update_ticket(ticket_id: str, data: TicketUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def update_ticket(ticket_id: str, data: TicketUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES))):
     result = await db.execute(select(Ticket).where(Ticket.id == ticket_id, Ticket.store_id == ctx.store_id))
     ticket = result.scalar_one_or_none()
     if not ticket:
@@ -118,7 +119,7 @@ async def update_ticket(ticket_id: str, data: TicketUpdate, db: AsyncSession = D
     return {"id": ticket.id, "status": ticket.status}
 
 @router.delete("/{ticket_id}")
-async def delete_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store)):
+async def delete_ticket(ticket_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(GESTIONAR_CLIENTES))):
     result = await db.execute(select(Ticket).where(Ticket.id == ticket_id, Ticket.store_id == ctx.store_id))
     ticket = result.scalar_one_or_none()
     if not ticket:

@@ -13,7 +13,7 @@ from sqlalchemy import select, func, delete, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import StoreContext, require_store_admin, require_store_permission
+from app.core.deps import StoreContext, ensure_branch_in_scope, require_store_admin, require_store_permission
 from app.core.permissions import (
     CREAR_CITA,
     EDITAR_CITA,
@@ -183,6 +183,7 @@ async def list_branch_stations(
     db: AsyncSession = Depends(get_db),
     ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
 ):
+    ensure_branch_in_scope(ctx, branch_id)
     br = await db.get(Branch, branch_id)
     if not br or br.store_id != ctx.store_id:
         raise HTTPException(404, "Sede no encontrada")
@@ -201,6 +202,7 @@ async def branch_stations_occupancy(
     ctx: StoreContext = Depends(require_store_permission(VER_AGENDA_TIENDA)),
     at: Optional[datetime] = Query(None, description="Instante UTC; por defecto ahora"),
 ):
+    ensure_branch_in_scope(ctx, branch_id)
     br = await db.get(Branch, branch_id)
     if not br or br.store_id != ctx.store_id:
         raise HTTPException(404, "Sede no encontrada")
@@ -262,6 +264,7 @@ async def create_branch_station(
     db: AsyncSession = Depends(get_db),
     ctx: StoreContext = Depends(require_store_admin),
 ):
+    ensure_branch_in_scope(ctx, branch_id)
     br = await db.get(Branch, branch_id)
     if not br or br.store_id != ctx.store_id:
         raise HTTPException(404, "Sede no encontrada")
@@ -354,6 +357,8 @@ class ProfessionalCreate(BaseModel):
     # Por sede: mismo modo para todas; fixed requiere default_station_id en esa sede
     station_mode: Literal["none", "fixed", "dynamic"] = "none"
     default_station_id: Optional[str] = None
+    invite_member_role: Literal["worker", "branch_operator", "branch_admin"] = "worker"
+    worker_role: Optional[str] = Field(None, max_length=80)
 
 
 @router.get("/professionals")
@@ -407,6 +412,10 @@ async def create_professional(
     db: AsyncSession = Depends(get_db),
     ctx: StoreContext = Depends(require_store_admin),
 ):
+    normalized_inviter = ctx.member_role_normalized
+    invite_role = data.invite_member_role
+    if normalized_inviter != "store_admin" and invite_role != "worker":
+        raise HTTPException(403, "Tu rol solo puede invitar trabajadores")
     if not data.branch_ids:
         raise HTTPException(400, "Indica al menos una sede donde atiende el profesional")
     if not data.service_ids:
@@ -449,6 +458,9 @@ async def create_professional(
         user_id=None,
         invite_token=token,
         invite_expires_at=exp,
+        invite_member_role=invite_role,
+        invite_branch_ids=list(data.branch_ids),
+        invite_worker_role=(data.worker_role or "").strip() or None,
         product_commission_percent=data.product_commission_percent,
     )
     db.add(p)
@@ -915,6 +927,7 @@ async def list_availability_rules(
     if professional_id:
         q = q.where(AvailabilityRule.professional_id == professional_id)
     if branch_id:
+        ensure_branch_in_scope(ctx, branch_id)
         q = q.where(AvailabilityRule.branch_id == branch_id)
     r = await db.execute(q)
     rows = r.scalars().all()
@@ -998,6 +1011,7 @@ async def admin_slots(
     db: AsyncSession = Depends(get_db),
     ctx: StoreContext = Depends(require_store_permission(VER_CATALOGO_AGENDA, VER_AGENDA_TIENDA)),
 ):
+    ensure_branch_in_scope(ctx, branch_id)
     slots = await compute_slots(
         db,
         store_id=ctx.store_id,
@@ -1057,7 +1071,10 @@ async def list_appointments(
     if professional_id:
         q = q.where(Appointment.professional_id == professional_id)
     if branch_id:
+        ensure_branch_in_scope(ctx, branch_id)
         q = q.where(Appointment.branch_id == branch_id)
+    elif ctx.branch_scope:
+        q = q.where(Appointment.branch_id.in_(list(ctx.branch_scope)))
     if status:
         q = q.where(Appointment.status == status)
     r = await db.execute(q)
@@ -1180,6 +1197,7 @@ async def create_admin_appointment(
     ctx: StoreContext = Depends(require_store_permission(CREAR_CITA)),
     user: User = Depends(get_current_user),
 ):
+    ensure_branch_in_scope(ctx, data.branch_id)
     if data.client_id:
         cl = await db.get(Client, data.client_id)
         if not cl or cl.store_id != ctx.store_id:
@@ -1759,6 +1777,8 @@ async def list_waitlist(
         q = q.where(WaitlistEntry.service_id == service_id)
     if status:
         q = q.where(WaitlistEntry.status == status)
+    if ctx.branch_scope:
+        q = q.where(WaitlistEntry.branch_id.in_(list(ctx.branch_scope)))
     q = q.order_by(WaitlistEntry.desired_date, WaitlistEntry.created_at)
     r = await db.execute(q)
     rows = r.scalars().all()

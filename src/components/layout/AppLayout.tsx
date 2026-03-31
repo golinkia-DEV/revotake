@@ -9,6 +9,8 @@ import BottomNav from "./BottomNav";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Send, Loader2, Sparkles, User } from "lucide-react";
 import api from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { buildNavSections, canAccessPath } from "@/lib/navigation";
 
 interface HelpMsg { role: "user" | "assistant"; content: string }
 
@@ -96,6 +98,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [showHelp, setShowHelp] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const storeId = typeof window !== "undefined" ? getStoreId() : null;
+
+  const { data: me } = useQuery({
+    queryKey: ["auth-me", storeId],
+    queryFn: () => api.get("/auth/me").then((r) => r.data),
+    enabled: !!storeId && isAuthenticated(),
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     if (pathname?.startsWith("/profesional")) return;
@@ -107,6 +117,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     if (pathname === "/login" || pathname?.startsWith("/stores") || pathname?.startsWith("/profesional")) return;
     if (!getStoreId()) router.replace("/stores");
   }, [pathname, router]);
+
+  useEffect(() => {
+    if (!pathname || !isAuthenticated() || !storeId || !me) return;
+    if (pathname.startsWith("/book")) return;
+    if (canAccessPath(pathname, me)) return;
+    const fallback = buildNavSections(me).flatMap((s) => s.items)[0]?.href ?? "/stores";
+    router.replace(fallback);
+  }, [me, pathname, router, storeId]);
 
   // Cierra el sidebar al cambiar de ruta en mobile
   useEffect(() => {

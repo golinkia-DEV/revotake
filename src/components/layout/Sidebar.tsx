@@ -12,55 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { getStoreId } from "@/lib/store";
 import { isAuthenticated } from "@/lib/auth";
-
-type NavItem = { href: string; label: string; icon: string; filled?: boolean; perm?: string | null };
-type NavSection = { title: string; items: NavItem[] };
-
-const FULL_NAV_SECTIONS: NavSection[] = [
-  {
-    title: "Principal",
-    items: [
-      { href: "/calendar", label: "Agenda", icon: "calendar_today", filled: true },
-      { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
-      { href: "/kanban", label: "Operaciones", icon: "settings_suggest", filled: true },
-      { href: "/scheduling/panel", label: "Panel atención", icon: "clinical_notes", filled: true },
-    ],
-  },
-  {
-    title: "Clientes y citas",
-    items: [
-      { href: "/clients", label: "Clientes", icon: "group" },
-      { href: "/scheduling", label: "Citas", icon: "event_available", filled: true },
-      { href: "/scheduling/services", label: "Crear servicios", icon: "menu_book", filled: true },
-    ],
-  },
-  {
-    title: "Equipo",
-    items: [
-      { href: "/scheduling/profesionales", label: "Profesionales", icon: "person_add", filled: true },
-      { href: "/scheduling/sedes", label: "Sedes", icon: "location_city", filled: true },
-      { href: "/equipo", label: "Equipo y permisos", icon: "admin_panel_settings", filled: true },
-      { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true },
-    ],
-  },
-  {
-    title: "Gestión",
-    items: [
-      { href: "/products", label: "Productos a la venta", icon: "inventory_2" },
-      { href: "/stores", label: "Tiendas", icon: "storefront" },
-      { href: "/settings/payments", label: "Métodos de pago", icon: "payments", filled: true },
-      { href: "/ai", label: "Asistente IA", icon: "psychology", filled: true },
-      { href: "/settings", label: "Configuración", icon: "settings" },
-    ],
-  },
-];
-
-const OPERATOR_NAV: NavItem[] = [
-  { href: "/stores", label: "Tiendas", icon: "storefront", perm: null },
-  { href: "/mi-agenda", label: "Mi agenda", icon: "person", filled: true, perm: "ver_agenda_propia" },
-  { href: "/mi-clientes", label: "Mis clientes", icon: "groups", perm: "ver_clientes_propios" },
-  { href: "/mi-produccion", label: "Mi producción", icon: "payments", filled: true, perm: "ver_reportes_comisiones" },
-];
+import { buildNavSections, type NavItem } from "@/lib/navigation";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -79,18 +31,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     staleTime: 30_000,
   });
 
-  const isOperator = me?.store_context?.member_role === "operator";
-  const perms = new Set<string>((me?.store_context?.permissions as string[] | undefined) ?? []);
-
-  const operatorNav = OPERATOR_NAV.filter((it) => it.perm == null || perms.has(it.perm));
-
-  // Para admin filtramos equipo solo si es admin
-  const fullNavSections = FULL_NAV_SECTIONS.map((section) => ({
-    ...section,
-    items: section.items.filter(
-      (it) => it.href !== "/equipo" || me?.store_context?.member_role === "admin"
-    ),
-  })).filter((s) => s.items.length > 0);
+  const navSections = buildNavSections(me);
 
   function handleLogout() {
     logout();
@@ -169,29 +110,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-2 pb-2">
-          {isOperator ? (
-            <>
-              <p className="mb-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Vista profesional</p>
+          {navSections.map((section) => (
+            <div key={section.title} className="mb-3">
+              <p className="mb-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                {section.title}
+              </p>
               <div className="space-y-0.5">
-                {operatorNav.map((item) => (
+                {section.items.map((item) => (
                   <NavLink key={item.href} {...item} />
                 ))}
               </div>
-            </>
-          ) : (
-            fullNavSections.map((section) => (
-              <div key={section.title} className="mb-3">
-                <p className="mb-1 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  {section.title}
-                </p>
-                <div className="space-y-0.5">
-                  {section.items.map((item) => (
-                    <NavLink key={item.href} {...item} />
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
+            </div>
+          ))}
         </nav>
 
         {/* Footer */}

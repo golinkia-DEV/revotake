@@ -1,20 +1,11 @@
-"""
-Permisos por módulo (estilo AgendaPro).
-
-Roles en tienda (StoreMemberRole), alineados con negocio:
-- admin → Gerente de tienda: configura sucursales, servicios, profesionales, reportes.
-- seller → Recepcionista: ve todas las agendas de la tienda y gestiona reservas.
-- operator → Trabajador: ve su agenda (vía profesional vinculado) y marca asistencia.
-
-Rol global (UserRole):
-- admin → Admin global: puede gestionar usuarios y permisos a nivel sistema (endpoints dedicados).
-"""
+"""Permisos y helpers RBAC (legacy + jerarquía nueva)."""
 
 from __future__ import annotations
 
 from typing import FrozenSet
 
 from app.models.store import StoreMember, StoreMemberRole
+from app.models.user import UserRole
 
 # --- Claves de permiso (snake_case, estables para API y JWT) ---
 
@@ -31,7 +22,6 @@ VER_REPORTES_COMISIONES = "ver_reportes_comisiones"
 EXPORTAR_REGISTROS = "exportar_registros"
 REGISTRAR_VENTAS = "registrar_ventas"
 VER_BASE_CLIENTES = "ver_base_clientes"
-# Clientes vistos en la propia agenda (profesional); el gerente puede quitar este permiso en el miembro
 VER_CLIENTES_PROPIOS = "ver_clientes_propios"
 GESTIONAR_CLIENTES = "gestionar_clientes"
 VER_FICHAS = "ver_fichas"
@@ -41,8 +31,6 @@ ELIMINAR_FICHAS = "eliminar_fichas"
 VER_MARKETING_EMAIL = "ver_marketing_email"
 VER_CAMPOS_PERSONALIZADOS = "ver_campos_personalizados"
 EDITAR_CAMPOS_PERSONALIZADOS = "editar_campos_personalizados"
-
-# Incluye lectura de sucursales/profesionales/servicios/horarios para operar la agenda
 VER_CATALOGO_AGENDA = "ver_catalogo_agenda"
 
 ALL_STORE_PERMISSIONS: FrozenSet[str] = frozenset(
@@ -73,12 +61,77 @@ ALL_STORE_PERMISSIONS: FrozenSet[str] = frozenset(
     }
 )
 
+# --- Permisos de plataforma ---
+PLATFORM_VIEW_DASHBOARD = "platform_view_dashboard"
+PLATFORM_MANAGE_STORES = "platform_manage_stores"
+PLATFORM_MANAGE_PLANS = "platform_manage_plans"
+PLATFORM_MANAGE_GLOBAL_PAYMENTS = "platform_manage_global_payments"
+PLATFORM_MANAGE_USERS = "platform_manage_users"
+PLATFORM_MANAGE_NOTIFICATIONS = "platform_manage_notifications"
+PLATFORM_VIEW_FINANCE = "platform_view_finance"
+PLATFORM_EXPORT_FINANCE = "platform_export_finance"
+
+ALL_PLATFORM_PERMISSIONS: FrozenSet[str] = frozenset(
+    {
+        PLATFORM_VIEW_DASHBOARD,
+        PLATFORM_MANAGE_STORES,
+        PLATFORM_MANAGE_PLANS,
+        PLATFORM_MANAGE_GLOBAL_PAYMENTS,
+        PLATFORM_MANAGE_USERS,
+        PLATFORM_MANAGE_NOTIFICATIONS,
+        PLATFORM_VIEW_FINANCE,
+        PLATFORM_EXPORT_FINANCE,
+    }
+)
+
+
+def normalize_global_role(role: UserRole) -> str:
+    if role in (UserRole.ADMIN, UserRole.PLATFORM_ADMIN):
+        return UserRole.PLATFORM_ADMIN.value
+    if role in (UserRole.OPERATOR, UserRole.PLATFORM_OPERATOR):
+        return UserRole.PLATFORM_OPERATOR.value
+    return role.value
+
+
+def is_platform_admin(role: UserRole) -> bool:
+    return normalize_global_role(role) == UserRole.PLATFORM_ADMIN.value
+
+
+def is_platform_operator(role: UserRole) -> bool:
+    return normalize_global_role(role) == UserRole.PLATFORM_OPERATOR.value
+
+
+def normalize_store_member_role(role: StoreMemberRole) -> str:
+    if role == StoreMemberRole.ADMIN:
+        return StoreMemberRole.STORE_ADMIN.value
+    if role == StoreMemberRole.SELLER:
+        return StoreMemberRole.BRANCH_ADMIN.value
+    if role == StoreMemberRole.OPERATOR:
+        return StoreMemberRole.WORKER.value
+    return role.value
+
+
+def member_branch_scope(member: StoreMember) -> FrozenSet[str]:
+    raw = member.branch_ids
+    if not isinstance(raw, list):
+        return frozenset()
+    return frozenset(str(b).strip() for b in raw if str(b).strip())
+
+
+def effective_platform_permissions(role: UserRole) -> FrozenSet[str]:
+    normalized = normalize_global_role(role)
+    if normalized == UserRole.PLATFORM_ADMIN.value:
+        return ALL_PLATFORM_PERMISSIONS
+    if normalized == UserRole.PLATFORM_OPERATOR.value:
+        return frozenset({PLATFORM_VIEW_FINANCE, PLATFORM_EXPORT_FINANCE})
+    return frozenset()
+
 
 def _default_permissions_for_role(role: StoreMemberRole) -> FrozenSet[str]:
-    if role == StoreMemberRole.ADMIN:
+    normalized = normalize_store_member_role(role)
+    if normalized == StoreMemberRole.STORE_ADMIN.value:
         return ALL_STORE_PERMISSIONS
-    if role == StoreMemberRole.SELLER:
-        # Recepcionista (edición): comparable a AgendaPro recepcionista
+    if normalized == StoreMemberRole.BRANCH_ADMIN.value:
         return frozenset(
             {
                 VER_AGENDA_TIENDA,
@@ -103,7 +156,15 @@ def _default_permissions_for_role(role: StoreMemberRole) -> FrozenSet[str]:
                 EDITAR_CAMPOS_PERSONALIZADOS,
             }
         )
-    # operator → trabajador: agenda propia vía /scheduling/staff/* (profesional vinculado)
+    if normalized == StoreMemberRole.BRANCH_OPERATOR.value:
+        return frozenset(
+            {
+                VER_REPORTES,
+                VER_REPORTES_PAGOS,
+                VER_REPORTES_COMISIONES,
+                EXPORTAR_REGISTROS,
+            }
+        )
     return frozenset(
         {
             VER_AGENDA_PROPIA,
@@ -116,7 +177,6 @@ def _default_permissions_for_role(role: StoreMemberRole) -> FrozenSet[str]:
 
 
 def effective_permissions(member: StoreMember) -> FrozenSet[str]:
-    """Lista efectiva: override en StoreMember.permissions o defaults por rol."""
     raw = member.permissions
     if raw is not None and isinstance(raw, list):
         return frozenset(str(p) for p in raw if p)

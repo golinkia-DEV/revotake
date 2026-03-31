@@ -8,23 +8,11 @@ import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { getStoreId } from "@/lib/store";
 import { isAuthenticated } from "@/lib/auth";
+import { buildBottomItems } from "@/lib/navigation";
 
 interface BottomNavProps {
   onMoreClick: () => void;
 }
-
-const MAIN_ITEMS = [
-  { href: "/calendar", label: "Agenda", icon: "calendar_today" },
-  { href: "/scheduling/panel", label: "Panel", icon: "clinical_notes" },
-  { href: "/clients", label: "Clientes", icon: "group" },
-  { href: "/products", label: "Inventario", icon: "inventory_2" },
-];
-
-const OPERATOR_ITEMS = [
-  { href: "/mi-agenda", label: "Mi agenda", icon: "person" },
-  { href: "/mi-clientes", label: "Clientes", icon: "groups" },
-  { href: "/mi-produccion", label: "Producción", icon: "payments" },
-];
 
 export default function BottomNav({ onMoreClick }: BottomNavProps) {
   const pathname = usePathname();
@@ -37,8 +25,7 @@ export default function BottomNav({ onMoreClick }: BottomNavProps) {
     staleTime: 30_000,
   });
 
-  const isOperator = me?.store_context?.member_role === "operator";
-  const items = isOperator ? OPERATOR_ITEMS : MAIN_ITEMS;
+  const items = buildBottomItems(me);
 
   return (
     <nav
