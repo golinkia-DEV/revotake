@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Calendar, Plus, Clock, Link2, Users, Briefcase, Stethoscope,
+  Calendar, Plus, Clock, Link2, Stethoscope,
   LayoutGrid, ExternalLink, UserCircle, CheckCircle2, Loader2,
   ChevronLeft, ChevronRight, X, Building2, User, AlertCircle,
   Phone, Mail, MapPin, DollarSign, Tag, Ban,
@@ -15,6 +15,7 @@ import clsx from "clsx";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import Link from "next/link";
 import { getStoreId } from "@/lib/store";
+import { PhoneQuickBookingForm } from "@/components/scheduling/PhoneQuickBookingForm";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -394,8 +395,6 @@ export default function CalendarPage() {
   const storeId = typeof window !== "undefined" ? getStoreId() : null;
 
   // Hub (today overview)
-  const [closeAppt, setCloseAppt] = useState<HubAppointment | null>(null);
-  const [priceInput, setPriceInput] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", start_time: "", end_time: "", meeting_url: "", client_id: "" });
 
@@ -406,20 +405,6 @@ export default function CalendarPage() {
   const [selectedAppt, setSelectedAppt] = useState<ProAppointment | null>(null);
   const [showProCal, setShowProCal] = useState(true);
   const [proViewMode, setProViewMode] = useState<"calendar" | "list">("calendar");
-  const [bookingMode, setBookingMode] = useState<"existing" | "new">("existing");
-  const [bookingClientId, setBookingClientId] = useState("");
-  const [newClient, setNewClient] = useState({
-    name: "",
-    paternal_last_name: "",
-    maternal_last_name: "",
-    birth_date: "",
-    email: "",
-    phone: "",
-    address: "",
-  });
-  const [bookingServiceId, setBookingServiceId] = useState("");
-  const [bookingDate, setBookingDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [bookingTime, setBookingTime] = useState("");
 
   const weekEnd = addDays(weekStart, 6);
 
@@ -494,7 +479,7 @@ export default function CalendarPage() {
       qc.invalidateQueries({ queryKey: ["kanban"] });
       qc.invalidateQueries({ queryKey: ["pro-appointments"] });
       toast.success("Atención cerrada y precio registrado.");
-      setCloseAppt(null); setSelectedAppt(null);
+      setSelectedAppt(null);
     },
     onError: () => toast.error("No se pudo cerrar la cita"),
   });
@@ -516,56 +501,6 @@ export default function CalendarPage() {
       qc.invalidateQueries({ queryKey: ["meetings"] });
       qc.invalidateQueries({ queryKey: ["meetings-agenda-hub"] });
       setShowForm(false); toast.success("Reunión creada");
-    },
-  });
-  const recommendSlots = useQuery({
-    queryKey: ["recommend-slots", storeId, selectedBranch, bookingServiceId, bookingDate, bookingTime],
-    queryFn: () =>
-      api
-        .get("/scheduling/recommend-slots", {
-          params: {
-            branch_id: selectedBranch,
-            service_id: bookingServiceId,
-            on_date: bookingDate,
-            preferred_time: bookingTime || undefined,
-          },
-        })
-        .then((r) => r.data),
-    enabled: !!storeId && !!selectedBranch && !!bookingServiceId && !!bookingDate,
-  });
-  const quickBook = useMutation({
-    mutationFn: async (slot: { professional_id: string; start_time: string }) => {
-      let clientId = bookingClientId || null;
-      if (bookingMode === "new") {
-        const c = await api.post("/clients/", {
-          ...newClient,
-          rut: null,
-          address_lat: null,
-          address_lng: null,
-          preferences: {},
-        });
-        clientId = c.data.id as string;
-      }
-      if (!clientId) throw new Error("Selecciona o crea clienta");
-      await api.post("/scheduling/appointments", {
-        branch_id: selectedBranch,
-        professional_id: slot.professional_id,
-        service_id: bookingServiceId,
-        client_id: clientId,
-        start_time: slot.start_time,
-        payment_mode: "on_site",
-      });
-    },
-    onSuccess: () => {
-      toast.success("Reserva creada");
-      qc.invalidateQueries({ queryKey: ["pro-appointments"] });
-      qc.invalidateQueries({ queryKey: ["meetings-agenda-hub"] });
-      qc.invalidateQueries({ queryKey: ["scheduling-panel"] });
-      setBookingClientId("");
-    },
-    onError: (e: unknown) => {
-      const msg = e instanceof Error ? e.message : "No se pudo reservar";
-      toast.error(msg);
     },
   });
 
@@ -732,55 +667,12 @@ export default function CalendarPage() {
             <div className="mb-10 space-y-8">
               {!hub.scheduling_included && (
                 <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40">
-                  Tu rol no incluye la agenda de citas de la tienda; solo verás reuniones y tickets.
+                  Tu rol no incluye la agenda de citas de la tienda. Reuniones de hoy y atención en curso están en el{" "}
+                  <Link href="/dashboard" className="font-semibold text-primary hover:underline">
+                    panel principal
+                  </Link>
+                  .
                 </p>
-              )}
-
-              {hub.scheduling_included && (
-                <section>
-                  <div className="mb-3 flex items-center gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                      <Users className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
-                    </div>
-                    <h2 className="text-lg font-bold text-on-surface">En atención ahora</h2>
-                  </div>
-                  {hub.appointments_in_progress.length === 0 ? (
-                    <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/20">
-                      Nadie en franja activa en este momento.
-                    </p>
-                  ) : (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {hub.appointments_in_progress.map((a) => (
-                        <motion.div key={a.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                          className="rounded-2xl border-2 border-emerald-300/60 bg-emerald-50/50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-semibold text-on-surface">{a.service_name || "Servicio"}</p>
-                              <p className="mt-1 flex items-center gap-1 text-xs text-slate-600"><Clock className="h-3 w-3" />{fmtRange(a.start_time, a.end_time)}</p>
-                            </div>
-                            <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">En curso</span>
-                          </div>
-                          <div className="mt-3 space-y-1 border-t border-emerald-200/60 pt-3 text-sm dark:border-emerald-800/50">
-                            <p className="flex items-center gap-2 text-slate-700 dark:text-slate-300">
-                              <UserCircle className="h-4 w-4 shrink-0 text-primary" />
-                              <span><strong>Profesional:</strong> {a.professional_name || "—"}</span>
-                            </p>
-                            <p className="text-slate-600 dark:text-slate-400"><strong>Cliente:</strong> {a.client_name || "Sin nombre"}</p>
-                            {a.branch_name && <p className="text-xs text-slate-500"><strong>Sede:</strong> {a.branch_name}</p>}
-                            {a.station_name && <p className="text-xs text-slate-600"><strong>Puesto:</strong> {a.station_name}</p>}
-                            <div className="mt-2 flex flex-wrap gap-2 pt-1">
-                              {a.ticket_id && <Link href="/kanban" className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline">Ver ficha Kanban</Link>}
-                              <button type="button" onClick={() => { setCloseAppt(a); setPriceInput(String(a.service_price_cents || 0)); }}
-                                className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Cerrar y cobrar
-                              </button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )}
-                </section>
               )}
 
               {hub.scheduling_included && hub.appointments_rest_today.length > 0 && (
@@ -804,165 +696,11 @@ export default function CalendarPage() {
                   </div>
                 </section>
               )}
-
-              <section>
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/40">
-                    <Briefcase className="h-4 w-4 text-violet-700 dark:text-violet-300" />
-                  </div>
-                  <h2 className="text-lg font-bold text-on-surface">Reuniones hoy</h2>
-                </div>
-                {hub.meetings_today.length === 0 ? (
-                  <p className="text-sm text-slate-500">No hay reuniones agendadas para hoy.</p>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {hub.meetings_today.map((m) => {
-                      const su = statusUi[m.confirmation_status] || statusUi.scheduled;
-                      return (
-                        <div key={m.id} className="rounded-2xl border border-slate-200 bg-surface-container-lowest p-4 dark:border-slate-700">
-                          <h3 className="font-semibold text-on-surface">{m.title}</h3>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {new Date(m.start_time).toLocaleString("es-CL")} — {m.organizer_name || "Organizador"}
-                            {m.organizer_email ? ` · ${m.organizer_email}` : ""}
-                          </p>
-                          <span className={clsx("mt-2 inline-flex rounded-md border px-2 py-0.5 text-[11px]", su.className)}>{su.label}</span>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {m.meeting_url && (
-                              <a href={m.meeting_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline">
-                                <Link2 className="h-3 w-3" /> Entrar
-                              </a>
-                            )}
-                            <a href={`${API_URL}/meetings/ics/${m.ics_token}`} className="text-xs text-slate-500 hover:text-on-surface">.ics</a>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                      <LayoutGrid className="h-4 w-4 text-amber-800 dark:text-amber-200" />
-                    </div>
-                    <h2 className="text-lg font-bold text-on-surface">Operaciones Kanban (activas)</h2>
-                  </div>
-                  <Link href="/kanban" className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
-                    Abrir tablero <ExternalLink className="h-3 w-3" />
-                  </Link>
-                </div>
-                {hub.active_tickets.length === 0 ? (
-                  <p className="text-sm text-slate-500">No hay tickets fuera de cerrado.</p>
-                ) : (
-                  <>
-                    <div className="space-y-2 sm:hidden">
-                      {hub.active_tickets.map((t) => (
-                        <div key={t.id} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900/20">
-                          <p className="font-medium text-sm text-on-surface">{t.title}</p>
-                          <p className="text-xs text-slate-500">{t.type}</p>
-                          {t.extra_data?.appointment_id && <p className="mt-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">Vinculado a cita</p>}
-                          <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">{t.assignee_name || "Sin asignar"}</span>
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">{t.status}</span>
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800">{t.priority}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 sm:block dark:border-slate-700">
-                      <table className="w-full min-w-[480px] text-left text-sm">
-                        <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/50">
-                          <tr>
-                            <th className="px-4 py-3">Ticket</th>
-                            <th className="px-4 py-3">Responsable</th>
-                            <th className="px-4 py-3">Estado</th>
-                            <th className="px-4 py-3">Prioridad</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {hub.active_tickets.map((t) => (
-                            <tr key={t.id} className="bg-white dark:bg-slate-900/20">
-                              <td className="px-4 py-3">
-                                <p className="font-medium text-on-surface">{t.title}</p>
-                                <p className="text-xs text-slate-500">{t.type}</p>
-                                {t.extra_data?.appointment_id ? <p className="mt-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">Vinculado a cita</p> : null}
-                              </td>
-                              <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{t.assignee_name || <span className="italic text-slate-400">Sin asignar</span>}</td>
-                              <td className="px-4 py-3 text-slate-600">{t.status}</td>
-                              <td className="px-4 py-3 text-slate-600">{t.priority}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
-              </section>
             </div>
           )}
 
           <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900/50">
-            <h2 className="mb-2 text-lg font-bold text-on-surface">Reserva rápida telefónica</h2>
-            <p className="mb-4 text-sm text-slate-500">Para clientas nuevas o existentes. Recomendación justa: prioriza menor carga y desempata aleatoriamente.</p>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <select className="input-field" value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)}>
-                <option value="">Sede</option>
-                {branches.filter((b) => b.is_active).map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
-              <select className="input-field" value={bookingServiceId} onChange={(e) => setBookingServiceId(e.target.value)}>
-                <option value="">Servicio</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              <input type="date" className="input-field" value={bookingDate} onChange={(e) => setBookingDate(e.target.value)} />
-              <input type="time" className="input-field" value={bookingTime} onChange={(e) => setBookingTime(e.target.value)} />
-            </div>
-            <div className="mt-3 flex gap-2">
-              <button type="button" className={clsx("btn-ghost text-xs", bookingMode === "existing" && "bg-primary/10 text-primary")} onClick={() => setBookingMode("existing")}>Cliente existente</button>
-              <button type="button" className={clsx("btn-ghost text-xs", bookingMode === "new" && "bg-primary/10 text-primary")} onClick={() => setBookingMode("new")}>Nueva clienta</button>
-            </div>
-            {bookingMode === "existing" ? (
-              <div className="mt-3">
-                <select className="input-field" value={bookingClientId} onChange={(e) => setBookingClientId(e.target.value)}>
-                  <option value="">Seleccionar clienta</option>
-                  {(clientsData?.items as { id: string; name: string; email: string | null }[] | undefined)?.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}{c.email ? ` (${c.email})` : ""}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-                <input className="input-field" placeholder="Nombre" value={newClient.name} onChange={(e) => setNewClient((x) => ({ ...x, name: e.target.value }))} />
-                <input className="input-field" placeholder="Apellido paterno" value={newClient.paternal_last_name} onChange={(e) => setNewClient((x) => ({ ...x, paternal_last_name: e.target.value }))} />
-                <input className="input-field" placeholder="Apellido materno" value={newClient.maternal_last_name} onChange={(e) => setNewClient((x) => ({ ...x, maternal_last_name: e.target.value }))} />
-                <input type="date" className="input-field" value={newClient.birth_date} onChange={(e) => setNewClient((x) => ({ ...x, birth_date: e.target.value }))} />
-                <input className="input-field" placeholder="Email" value={newClient.email} onChange={(e) => setNewClient((x) => ({ ...x, email: e.target.value }))} />
-                <input className="input-field" placeholder="Teléfono" value={newClient.phone} onChange={(e) => setNewClient((x) => ({ ...x, phone: e.target.value }))} />
-                <input className="input-field md:col-span-3" placeholder="Dirección" value={newClient.address} onChange={(e) => setNewClient((x) => ({ ...x, address: e.target.value }))} />
-              </div>
-            )}
-            <div className="mt-4 space-y-2">
-              {(recommendSlots.data?.items ?? []).length === 0 ? (
-                <p className="text-sm text-slate-500">Sin recomendaciones aún para los filtros seleccionados.</p>
-              ) : (
-                (recommendSlots.data?.items ?? []).map((r: { professional_id: string; professional_name: string; start_time: string; workload_today: number }) => (
-                  <div key={`${r.professional_id}-${r.start_time}`} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
-                    <div>
-                      <p className="font-semibold text-on-surface">{r.professional_name}</p>
-                      <p className="text-xs text-slate-500">{new Date(r.start_time).toLocaleString("es-CL")} · carga hoy {r.workload_today}</p>
-                    </div>
-                    <button type="button" className="btn-primary text-xs" onClick={() => quickBook.mutate(r)} disabled={quickBook.isPending}>
-                      Reservar
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
+            <PhoneQuickBookingForm syncBranch={{ value: selectedBranch, onChange: setSelectedBranch }} />
           </div>
 
           <p className="mb-10 text-sm text-slate-600 dark:text-slate-400">
@@ -1048,26 +786,6 @@ export default function CalendarPage() {
             })}
           </div>
         </>
-      )}
-
-      {/* Close hub appointment modal */}
-      {closeAppt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog">
-          <div className="w-full max-w-md rounded-2xl bg-white p-4 shadow-xl sm:p-6 dark:bg-slate-900 max-h-[calc(100dvh-2rem)] overflow-y-auto">
-            <h3 className="text-lg font-bold text-on-surface">Cerrar atención</h3>
-            <p className="mt-2 text-sm text-slate-600">{closeAppt.client_name} — {closeAppt.service_name}</p>
-            <p className="mt-1 text-xs text-slate-500">Precio lista: {fmtCLP(closeAppt.service_price_cents)}.{closeAppt.allow_price_override ? " Podés ajustar el monto cobrado." : ""}</p>
-            <label className="mt-4 block text-xs font-medium text-slate-600">Monto cobrado (CLP)</label>
-            <input type="number" min={0} className="input-field mt-1" value={priceInput} disabled={!closeAppt.allow_price_override} onChange={(e) => setPriceInput(e.target.value)} />
-            <div className="mt-4 flex justify-end gap-2">
-              <button type="button" className="btn-ghost" onClick={() => setCloseAppt(null)}>Cancelar</button>
-              <button type="button" className="btn-primary" disabled={closeMutation.isPending}
-                onClick={() => closeMutation.mutate({ id: closeAppt.id, charged: Math.max(0, Math.floor(Number(priceInput) || 0)) })}>
-                {closeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirmar cierre"}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Appointment detail side panel */}

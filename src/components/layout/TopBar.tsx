@@ -3,11 +3,12 @@
 import { useRef, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, Info, CheckCircle, X, Bell, ExternalLink, Menu } from "lucide-react";
+import { AlertTriangle, Info, CheckCircle, X, Bell, ExternalLink, Menu, Phone } from "lucide-react";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import api from "@/lib/api";
 import Link from "next/link";
 import { getStoreId } from "@/lib/store";
+import { PhoneQuickBookingForm } from "@/components/scheduling/PhoneQuickBookingForm";
 
 interface NotificationItem {
   id: string;
@@ -39,8 +40,10 @@ export default function TopBar({
 }) {
   const storeId = getStoreId();
   const [showNotif, setShowNotif] = useState(false);
+  const [showPhoneBooking, setShowPhoneBooking] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const notifRef = useRef<HTMLDivElement>(null);
+  const phoneBookingRef = useRef<HTMLDivElement>(null);
 
   const { data: notifData } = useQuery({
     queryKey: ["notifications", storeId],
@@ -63,6 +66,9 @@ export default function TopBar({
     function handler(e: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setShowNotif(false);
+      }
+      if (phoneBookingRef.current && !phoneBookingRef.current.contains(e.target as Node)) {
+        setShowPhoneBooking(false);
       }
     }
     document.addEventListener("mousedown", handler);
@@ -103,6 +109,46 @@ export default function TopBar({
       </div>
 
       <div className="flex items-center gap-0.5 sm:gap-2">
+        {storeId && (
+          <div ref={phoneBookingRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setShowPhoneBooking((v) => !v)}
+              className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-slate-600 transition-colors hover:bg-slate-100 hover:text-primary sm:px-3 dark:text-slate-300 dark:hover:bg-slate-800"
+              aria-expanded={showPhoneBooking}
+              aria-haspopup="dialog"
+              aria-label="Reserva rápida telefónica"
+            >
+              <Phone className="h-4 w-4 shrink-0 sm:h-[18px] sm:w-[18px]" />
+              <span className="hidden text-xs font-semibold sm:inline">Reserva rápida</span>
+            </button>
+            <AnimatePresence>
+              {showPhoneBooking && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                  className="fixed inset-x-3 top-14 z-50 max-h-[min(85dvh,calc(100dvh-5rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-12 sm:mt-0 sm:w-[min(100vw-24px,28rem)] sm:max-h-[min(80dvh,32rem)] dark:border-slate-700 dark:bg-slate-900"
+                  role="dialog"
+                  aria-label="Reserva rápida telefónica"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+                    <span className="text-sm font-semibold text-on-surface">Reserva telefónica</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowPhoneBooking(false)}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-on-surface dark:hover:bg-slate-800"
+                      aria-label="Cerrar"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <PhoneQuickBookingForm showHeading={false} onBooked={() => setShowPhoneBooking(false)} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
         {me?.global_role === "platform_admin" && (
           <Link
             href="/dashboard"

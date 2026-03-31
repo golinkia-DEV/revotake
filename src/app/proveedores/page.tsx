@@ -1,13 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip as ReTooltip,
+  Legend,
+  LineChart,
+  Line,
+} from "recharts";
 import AppLayout from "@/components/layout/AppLayout";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import Link from "next/link";
+import { getStoreId } from "@/lib/store";
 
 type SupplierRow = {
   id: string;
@@ -50,6 +63,7 @@ function money(n: number) {
 
 export default function ProveedoresPage() {
   const qc = useQueryClient();
+  const storeId = typeof window !== "undefined" ? getStoreId() : null;
   const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [fromDate, setFromDate] = useState(() => {
@@ -67,6 +81,7 @@ export default function ProveedoresPage() {
   const { data: reportData } = useQuery({
     queryKey: ["suppliers-report", fromDate, toDate],
     queryFn: () => api.get("/products/suppliers/report", { params: { from_date: fromDate, to_date: toDate } }).then((r) => r.data),
+    enabled: !!storeId,
   });
 
   const createSupplier = useMutation({
@@ -82,6 +97,17 @@ export default function ProveedoresPage() {
 
   const suppliers: SupplierRow[] = suppliersData?.items ?? [];
   const summary = reportData?.summary ?? {};
+  const bySupplier = reportData?.by_supplier ?? [];
+  const barData = useMemo(
+    () =>
+      bySupplier.map((x: { supplier_name: string; amount_total: number; purchases_count: number }) => ({
+        name: x.supplier_name,
+        total: x.amount_total,
+        compras: x.purchases_count,
+      })),
+    [bySupplier],
+  );
+  const lineData = reportData?.timeline ?? [];
 
   return (
     <AppLayout>
@@ -195,31 +221,89 @@ export default function ProveedoresPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Desde</label>
-          <input type="date" className="input-field" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Hasta</label>
-          <input type="date" className="input-field" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-        </div>
-        <div className="ml-auto text-right">
-          <p className="text-xs text-slate-500">Total comprado</p>
-          <p className="text-lg font-bold text-on-surface">{money(summary.amount_total || 0)}</p>
-          <p className="text-xs text-slate-500">{summary.purchases_count || 0} compras · {summary.suppliers_with_purchases || 0} proveedores</p>
-        </div>
-      </div>
+      {!storeId ? (
+        <p className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+          Seleccioná una tienda para ver reportes y gráficos de compras.
+        </p>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900/50"
+        >
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-on-surface">Compras a proveedores</h2>
+              <p className="text-sm text-slate-500">Período del reporte y totales respecto a compras registradas.</p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Desde</label>
+                <input type="date" className="input-field" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Hasta</label>
+                <input type="date" className="input-field" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-500">Total comprado</p>
+                <p className="text-lg font-bold text-on-surface">{money(summary.amount_total || 0)}</p>
+                <p className="text-xs text-slate-500">
+                  {summary.purchases_count || 0} compras · {summary.suppliers_with_purchases || 0} proveedores
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+              <h3 className="mb-3 font-semibold text-on-surface">Compras por proveedor</h3>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={barData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <ReTooltip formatter={(value) => money(Number(value))} />
+                    <Legend />
+                    <Bar dataKey="total" name="Total comprado" fill="#3b82f6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+              <h3 className="mb-3 font-semibold text-on-surface">Histórico (línea de tiempo)</h3>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={lineData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <ReTooltip formatter={(value) => money(Number(value))} />
+                    <Legend />
+                    {(reportData?.timeline_keys ?? []).slice(0, 6).map((k: string, idx: number) => (
+                      <Line
+                        key={k}
+                        dataKey={k}
+                        stroke={["#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ef4444", "#06b6d4"][idx % 6]}
+                        dot={false}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+          <p className="mt-4 text-sm text-slate-500">
+            Resumen operativo global en el{" "}
+            <Link href="/dashboard" className="font-semibold text-primary hover:underline">
+              panel principal
+            </Link>
+            .
+          </p>
+        </motion.div>
+      )}
 
-      <p className="mb-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
-        Los gráficos de compras por proveedor e histórico están en el{" "}
-        <Link href="/dashboard" className="font-semibold text-primary hover:underline">
-          panel principal (dashboard)
-        </Link>
-        .
-      </p>
-
-      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
         <h3 className="mb-3 font-semibold text-on-surface">Top productos comprados por proveedor</h3>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">

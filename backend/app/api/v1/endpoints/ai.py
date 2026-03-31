@@ -42,8 +42,9 @@ RevoTake es una plataforma de gestión empresarial con IA. Módulos disponibles:
 **Asistente IA** (/ai): Chat con contexto del negocio. Puedes configurar el contexto de la tienda en Configuración → IA.
 
 **Configuración** (/settings):
-- Contexto IA de la tienda: texto libre que describe el negocio, servicios, precios, horarios, políticas.
-- Modo estricto: la IA solo responde sobre la información del negocio configurada, sin inventar.
+- Datos de la tienda: mismo formulario que el alta (nombre, logo, SII, dirección, horarios, comodidades, Kanban, agenda).
+- Contexto IA: texto libre que describe el negocio, servicios, precios, horarios, políticas.
+- Modo estricto: la IA solo responde sobre la información configurada, sin inventar.
 
 **Notificaciones**: Campanita en la barra superior. Muestra alertas de stock crítico/bajo, citas próximas 24h, reuniones próximas, clientes en lista de espera.
 
