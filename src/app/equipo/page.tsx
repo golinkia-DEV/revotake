@@ -18,6 +18,7 @@ type MemberRow = {
 };
 
 const OP_TOGGLE = [
+  { key: "ver_base_clientes", label: "Ver todas las clientas de la tienda" },
   { key: "ver_agenda_propia", label: "Ver su agenda (Mi agenda)" },
   { key: "ver_clientes_propios", label: "Ver sus clientes (citados con él/ella)" },
   { key: "ver_reportes_comisiones", label: "Ver producción / comisiones" },
@@ -35,10 +36,15 @@ export default function EquipoPage() {
     enabled: !!storeId,
   });
 
+  const canManage =
+    me?.store_context?.member_role_normalized === "store_admin" ||
+    me?.store_context?.member_role_normalized === "branch_admin" ||
+    me?.store_context?.member_role === "admin";
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["store-members", storeId],
     queryFn: () => api.get<{ items: MemberRow[] }>(`/stores/${storeId}/members`).then((r) => r.data),
-    enabled: !!storeId && me?.store_context?.member_role === "admin",
+    enabled: !!storeId && !!canManage,
   });
 
   const patch = useMutation({
@@ -60,7 +66,7 @@ export default function EquipoPage() {
     );
   }
 
-  if (me?.store_context?.member_role !== "admin") {
+  if (!canManage) {
     return (
       <AppLayout>
         <p className="text-sm text-slate-600">
@@ -77,6 +83,9 @@ export default function EquipoPage() {
     const base = new Set(member.permissions);
     if (enabled) base.add(key);
     else base.delete(key);
+    if (key === "ver_base_clientes" && enabled) {
+      base.add("ver_clientes_propios");
+    }
     patch.mutate({ userId: member.user_id, permissions: [...base].sort() });
   }
 
@@ -108,7 +117,7 @@ export default function EquipoPage() {
       {data && (
         <div className="space-y-6">
           {data.items
-            .filter((m) => m.role === "operator")
+            .filter((m) => ["operator", "worker"].includes(m.role))
             .map((m) => (
               <div
                 key={m.user_id}
@@ -120,7 +129,7 @@ export default function EquipoPage() {
                     <p className="text-xs text-slate-500">{m.email}</p>
                   </div>
                   <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800">
-                    Operador
+                    {m.role === "worker" ? "Trabajador" : "Operador"}
                   </span>
                 </div>
                 <ul className="space-y-2">
@@ -149,8 +158,8 @@ export default function EquipoPage() {
                 </button>
               </div>
             ))}
-          {data.items.filter((m) => m.role === "operator").length === 0 && (
-            <p className="text-sm text-slate-500">No hay operadores en esta tienda todavía.</p>
+          {data.items.filter((m) => ["operator", "worker"].includes(m.role)).length === 0 && (
+            <p className="text-sm text-slate-500">No hay operadores o trabajadores en esta tienda todavía.</p>
           )}
         </div>
       )}

@@ -56,6 +56,30 @@ class WorkerNoteCreate(BaseModel):
     note: str = Field(..., min_length=1, max_length=2000)
 
 
+def _clients_visibility_filter(ctx: StoreContext, current_user: User):
+    """Scope de clientas según permisos efectivos del miembro."""
+    if VER_BASE_CLIENTES in ctx.permissions:
+        return None
+
+    if VER_CLIENTES_PROPIOS not in ctx.permissions:
+        raise HTTPException(status_code=403, detail="Permisos insuficientes para ver clientas")
+
+    own_professional_ids = select(Professional.id).where(
+        Professional.store_id == ctx.store_id,
+        Professional.user_id == current_user.id,
+    )
+    own_client_ids = (
+        select(Appointment.client_id)
+        .where(
+            Appointment.store_id == ctx.store_id,
+            Appointment.client_id.isnot(None),
+            Appointment.professional_id.in_(own_professional_ids),
+        )
+        .distinct()
+    )
+    return Client.id.in_(own_client_ids)
+
+
 def _extract_json_array(text: str) -> list[Any]:
     t = text.strip()
     if "```" in t:
@@ -209,6 +233,10 @@ async def list_clients(skip: int = 0, limit: int = 50, search: Optional[str] = N
     from sqlalchemy import or_
     count_stmt = select(func.count(Client.id)).where(Client.store_id == ctx.store_id)
     query = select(Client).where(Client.store_id == ctx.store_id)
+    visibility_filter = _clients_visibility_filter(ctx, current_user)
+    if visibility_filter is not None:
+        count_stmt = count_stmt.where(visibility_filter)
+        query = query.where(visibility_filter)
     if search and search.strip():
         term = f"%{search.strip()}%"
         normalized_search = re.sub(r"[^0-9kK]", "", search.strip())
@@ -269,7 +297,11 @@ async def create_client(data: ClientCreate, db: AsyncSession = Depends(get_db), 
 
 @router.get("/{client_id}")
 async def get_client(client_id: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), ctx: StoreContext = Depends(require_store_permission(VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS))):
-    result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
+    q = select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id)
+    visibility_filter = _clients_visibility_filter(ctx, current_user)
+    if visibility_filter is not None:
+        q = q.where(visibility_filter)
+    result = await db.execute(q)
     client = result.scalar_one_or_none()
     if not client:
         raise HTTPException(404, "Client not found")
@@ -300,7 +332,11 @@ async def get_client_activity(
     ctx: StoreContext = Depends(require_store_permission(VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS, VER_HISTORIAL_CLIENTE)),
 ):
     """Historial unificado: citas/reservas (con profesional aunque esté inactivo), compras, tickets y reuniones."""
-    result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
+    q = select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id)
+    visibility_filter = _clients_visibility_filter(ctx, current_user)
+    if visibility_filter is not None:
+        q = q.where(visibility_filter)
+    result = await db.execute(q)
     client = result.scalar_one_or_none()
     if not client:
         raise HTTPException(404, "Client not found")
@@ -439,7 +475,11 @@ async def get_worker_notes(
     current_user: User = Depends(get_current_user),
     ctx: StoreContext = Depends(require_store_permission(VER_HISTORIAL_CLIENTE, VER_BASE_CLIENTES, VER_CLIENTES_PROPIOS)),
 ):
-    result = await db.execute(select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id))
+    q = select(Client).where(Client.id == client_id, Client.store_id == ctx.store_id)
+    visibility_filter = _clients_visibility_filter(ctx, current_user)
+    if visibility_filter is not None:
+        q = q.where(visibility_filter)
+    result = await db.execute(q)
     client = result.scalar_one_or_none()
     if not client:
         raise HTTPException(404, "Client not found")

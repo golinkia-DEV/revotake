@@ -15,6 +15,7 @@ import clsx from "clsx";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import Link from "next/link";
 import { getStoreId } from "@/lib/store";
+import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip as ReTooltip, XAxis, YAxis, Legend } from "recharts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ interface AgendaHub {
 }
 interface BranchRow { id: string; name: string; slug: string; is_active: boolean; }
 interface ProfessionalRow { id: string; name: string; email: string | null; branch_ids: string[]; }
+interface ServiceRow { id: string; name: string; }
 interface ProAppointment {
   id: string; start_time: string; end_time: string; status: string;
   service_name: string; client_name: string; client_phone?: string; client_email?: string;
@@ -403,8 +405,22 @@ export default function CalendarPage() {
   const [selectedPro, setSelectedPro] = useState<string>("");
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
   const [selectedAppt, setSelectedAppt] = useState<ProAppointment | null>(null);
-  const [showProCal, setShowProCal] = useState(false);
+  const [showProCal, setShowProCal] = useState(true);
   const [proViewMode, setProViewMode] = useState<"calendar" | "list">("calendar");
+  const [bookingMode, setBookingMode] = useState<"existing" | "new">("existing");
+  const [bookingClientId, setBookingClientId] = useState("");
+  const [newClient, setNewClient] = useState({
+    name: "",
+    paternal_last_name: "",
+    maternal_last_name: "",
+    birth_date: "",
+    email: "",
+    phone: "",
+    address: "",
+  });
+  const [bookingServiceId, setBookingServiceId] = useState("");
+  const [bookingDate, setBookingDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [bookingTime, setBookingTime] = useState("");
 
   const weekEnd = addDays(weekStart, 6);
 
@@ -428,9 +444,20 @@ export default function CalendarPage() {
     queryFn: () => api.get("/scheduling/professionals").then((r) => r.data),
     enabled: !!storeId,
   });
+  const { data: servicesData } = useQuery({
+    queryKey: ["scheduling-services", storeId],
+    queryFn: () => api.get("/scheduling/services").then((r) => r.data),
+    enabled: !!storeId,
+  });
+  const { data: panelData } = useQuery({
+    queryKey: ["scheduling-panel", storeId],
+    queryFn: () => api.get("/scheduling/panel").then((r) => r.data),
+    enabled: !!storeId,
+  });
 
   const branches: BranchRow[] = branchesData?.items ?? [];
   const allProfessionals: ProfessionalRow[] = professionalsData?.items ?? [];
+  const services: ServiceRow[] = servicesData?.items ?? [];
 
   const filteredPros = useMemo(() => {
     if (!selectedBranch) return allProfessionals;
@@ -446,9 +473,9 @@ export default function CalendarPage() {
   const { data: proApptData, isLoading: proApptLoading } = useQuery({
     queryKey: ["pro-appointments", storeId, selectedPro, isoDate(weekStart)],
     queryFn: () => api.get(`/scheduling/appointments`, {
-      params: { professional_id: selectedPro, from_date: isoDate(weekStart), to_date: isoDate(weekEnd), limit: 200 }
+      params: { professional_id: selectedPro || undefined, branch_id: selectedBranch || undefined, from_date: isoDate(weekStart), to_date: isoDate(weekEnd), limit: 400 }
     }).then((r) => r.data),
-    enabled: !!storeId && !!selectedPro,
+    enabled: !!storeId,
   });
   const proAppointments: ProAppointment[] = proApptData?.items ?? [];
 
@@ -498,6 +525,62 @@ export default function CalendarPage() {
       setShowForm(false); toast.success("Reunión creada");
     },
   });
+  const recommendSlots = useQuery({
+    queryKey: ["recommend-slots", storeId, selectedBranch, bookingServiceId, bookingDate, bookingTime],
+    queryFn: () =>
+      api
+        .get("/scheduling/recommend-slots", {
+          params: {
+            branch_id: selectedBranch,
+            service_id: bookingServiceId,
+            on_date: bookingDate,
+            preferred_time: bookingTime || undefined,
+          },
+        })
+        .then((r) => r.data),
+    enabled: !!storeId && !!selectedBranch && !!bookingServiceId && !!bookingDate,
+  });
+  const quickBook = useMutation({
+    mutationFn: async (slot: { professional_id: string; start_time: string }) => {
+      let clientId = bookingClientId || null;
+      if (bookingMode === "new") {
+        const c = await api.post("/clients/", {
+          ...newClient,
+          rut: null,
+          address_lat: null,
+          address_lng: null,
+          preferences: {},
+        });
+        clientId = c.data.id as string;
+      }
+      if (!clientId) throw new Error("Selecciona o crea clienta");
+      await api.post("/scheduling/appointments", {
+        branch_id: selectedBranch,
+        professional_id: slot.professional_id,
+        service_id: bookingServiceId,
+        client_id: clientId,
+        start_time: slot.start_time,
+        payment_mode: "on_site",
+      });
+    },
+    onSuccess: () => {
+      toast.success("Reserva creada");
+      qc.invalidateQueries({ queryKey: ["pro-appointments"] });
+      qc.invalidateQueries({ queryKey: ["meetings-agenda-hub"] });
+      qc.invalidateQueries({ queryKey: ["scheduling-panel"] });
+      setBookingClientId("");
+    },
+    onError: (e: unknown) => {
+      const msg = e instanceof Error ? e.message : "No se pudo reservar";
+      toast.error(msg);
+    },
+  });
+  const staffChartData = (panelData?.staff ?? []).map((s: { name: string; appointments_count_90d: number; revenue_cents_completed_90d: number; fixed_clients_90d: number }) => ({
+    name: s.name,
+    citas: s.appointments_count_90d,
+    ingresos: Math.round((s.revenue_cents_completed_90d || 0) / 1000),
+    fijas: s.fixed_clients_90d || 0,
+  }));
 
   return (
     <AppLayout>
@@ -545,7 +628,7 @@ export default function CalendarPage() {
               </div>
               <div className="flex-1">
                 <h2 className="font-bold text-on-surface">Calendario por profesional</h2>
-                <p className="text-sm text-slate-500">Seleccioná sede y profesional para ver su agenda semanal completa</p>
+                <p className="text-sm text-slate-500">Calendario semanal completo por defecto (hoy marcado), con vista calendario o lista.</p>
               </div>
               <ChevronRight className={clsx("h-5 w-5 text-slate-400 transition-transform", showProCal && "rotate-90")} />
             </button>
@@ -573,45 +656,37 @@ export default function CalendarPage() {
                           <User className="inline h-3.5 w-3.5 mr-1" />Profesional
                         </label>
                         <select value={selectedPro} onChange={(e) => setSelectedPro(e.target.value)} className="input-field">
-                          <option value="">Seleccionar profesional…</option>
+                          <option value="">Todas las profesionales</option>
                           {filteredPros.map((p) => (
                             <option key={p.id} value={p.id}>{p.name}</option>
                           ))}
                         </select>
                       </div>
 
-                      {selectedPro && (
-                        <div className="flex items-end gap-2 ml-auto">
-                          <div className="mr-2 rounded-lg border border-slate-200 p-1 dark:border-slate-700">
-                            <button type="button" onClick={() => setProViewMode("calendar")} className={clsx("rounded px-2 py-1 text-xs", proViewMode === "calendar" ? "bg-primary text-white" : "text-slate-600")}>Calendario</button>
-                            <button type="button" onClick={() => setProViewMode("list")} className={clsx("rounded px-2 py-1 text-xs", proViewMode === "list" ? "bg-primary text-white" : "text-slate-600")}>Lista</button>
-                          </div>
-                          <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))}
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
-                            Hoy
-                          </button>
-                          <button type="button" onClick={() => setWeekStart((w) => addDays(w, -7))}
-                            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
-                            <ChevronLeft className="h-4 w-4" />
-                          </button>
-                          <span className="text-sm font-medium text-on-surface whitespace-nowrap px-1">
-                            {weekStart.toLocaleDateString("es-CL", { day: "numeric", month: "short" })} – {weekEnd.toLocaleDateString("es-CL", { day: "numeric", month: "short", year: "numeric" })}
-                          </span>
-                          <button type="button" onClick={() => setWeekStart((w) => addDays(w, 7))}
-                            className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
-                            <ChevronRight className="h-4 w-4" />
-                          </button>
+                      <div className="flex items-end gap-2 ml-auto">
+                        <div className="mr-2 rounded-lg border border-slate-200 p-1 dark:border-slate-700">
+                          <button type="button" onClick={() => setProViewMode("calendar")} className={clsx("rounded px-2 py-1 text-xs", proViewMode === "calendar" ? "bg-primary text-white" : "text-slate-600")}>Calendario</button>
+                          <button type="button" onClick={() => setProViewMode("list")} className={clsx("rounded px-2 py-1 text-xs", proViewMode === "list" ? "bg-primary text-white" : "text-slate-600")}>Lista</button>
                         </div>
-                      )}
+                        <button type="button" onClick={() => setWeekStart(startOfWeek(new Date()))}
+                          className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                          Hoy
+                        </button>
+                        <button type="button" onClick={() => setWeekStart((w) => addDays(w, -7))}
+                          className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <span className="text-sm font-medium text-on-surface whitespace-nowrap px-1">
+                          {weekStart.toLocaleDateString("es-CL", { day: "numeric", month: "short" })} – {weekEnd.toLocaleDateString("es-CL", { day: "numeric", month: "short", year: "numeric" })}
+                        </span>
+                        <button type="button" onClick={() => setWeekStart((w) => addDays(w, 7))}
+                          className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
 
-                    {/* No professional selected */}
-                    {!selectedPro ? (
-                      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-                        <User className="mb-3 h-12 w-12 opacity-20" />
-                        <p className="text-sm">Seleccioná una sede y un profesional para ver su agenda</p>
-                      </div>
-                    ) : proApptLoading ? (
+                    {proApptLoading ? (
                       <div className="flex justify-center py-16 text-slate-500">
                         <Loader2 className="h-6 w-6 animate-spin" />
                       </div>
@@ -651,7 +726,7 @@ export default function CalendarPage() {
                         )}
 
                         {proAppointments.length === 0 && (
-                          <p className="mt-4 text-center text-sm text-slate-400">Sin citas esta semana para este profesional.</p>
+                          <p className="mt-4 text-center text-sm text-slate-400">Sin citas esta semana para los filtros seleccionados.</p>
                         )}
                       </>
                     )}
@@ -840,6 +915,86 @@ export default function CalendarPage() {
               </section>
             </div>
           )}
+
+          <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900/50">
+            <h2 className="mb-2 text-lg font-bold text-on-surface">Reserva rápida telefónica</h2>
+            <p className="mb-4 text-sm text-slate-500">Para clientas nuevas o existentes. Recomendación justa: prioriza menor carga y desempata aleatoriamente.</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+              <select className="input-field" value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)}>
+                <option value="">Sede</option>
+                {branches.filter((b) => b.is_active).map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+              <select className="input-field" value={bookingServiceId} onChange={(e) => setBookingServiceId(e.target.value)}>
+                <option value="">Servicio</option>
+                {services.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <input type="date" className="input-field" value={bookingDate} onChange={(e) => setBookingDate(e.target.value)} />
+              <input type="time" className="input-field" value={bookingTime} onChange={(e) => setBookingTime(e.target.value)} />
+            </div>
+            <div className="mt-3 flex gap-2">
+              <button type="button" className={clsx("btn-ghost text-xs", bookingMode === "existing" && "bg-primary/10 text-primary")} onClick={() => setBookingMode("existing")}>Cliente existente</button>
+              <button type="button" className={clsx("btn-ghost text-xs", bookingMode === "new" && "bg-primary/10 text-primary")} onClick={() => setBookingMode("new")}>Nueva clienta</button>
+            </div>
+            {bookingMode === "existing" ? (
+              <div className="mt-3">
+                <select className="input-field" value={bookingClientId} onChange={(e) => setBookingClientId(e.target.value)}>
+                  <option value="">Seleccionar clienta</option>
+                  {(clientsData?.items as { id: string; name: string; email: string | null }[] | undefined)?.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}{c.email ? ` (${c.email})` : ""}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                <input className="input-field" placeholder="Nombre" value={newClient.name} onChange={(e) => setNewClient((x) => ({ ...x, name: e.target.value }))} />
+                <input className="input-field" placeholder="Apellido paterno" value={newClient.paternal_last_name} onChange={(e) => setNewClient((x) => ({ ...x, paternal_last_name: e.target.value }))} />
+                <input className="input-field" placeholder="Apellido materno" value={newClient.maternal_last_name} onChange={(e) => setNewClient((x) => ({ ...x, maternal_last_name: e.target.value }))} />
+                <input type="date" className="input-field" value={newClient.birth_date} onChange={(e) => setNewClient((x) => ({ ...x, birth_date: e.target.value }))} />
+                <input className="input-field" placeholder="Email" value={newClient.email} onChange={(e) => setNewClient((x) => ({ ...x, email: e.target.value }))} />
+                <input className="input-field" placeholder="Teléfono" value={newClient.phone} onChange={(e) => setNewClient((x) => ({ ...x, phone: e.target.value }))} />
+                <input className="input-field md:col-span-3" placeholder="Dirección" value={newClient.address} onChange={(e) => setNewClient((x) => ({ ...x, address: e.target.value }))} />
+              </div>
+            )}
+            <div className="mt-4 space-y-2">
+              {(recommendSlots.data?.items ?? []).length === 0 ? (
+                <p className="text-sm text-slate-500">Sin recomendaciones aún para los filtros seleccionados.</p>
+              ) : (
+                (recommendSlots.data?.items ?? []).map((r: { professional_id: string; professional_name: string; start_time: string; workload_today: number }) => (
+                  <div key={`${r.professional_id}-${r.start_time}`} className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+                    <div>
+                      <p className="font-semibold text-on-surface">{r.professional_name}</p>
+                      <p className="text-xs text-slate-500">{new Date(r.start_time).toLocaleString("es-CL")} · carga hoy {r.workload_today}</p>
+                    </div>
+                    <button type="button" className="btn-primary text-xs" onClick={() => quickBook.mutate(r)} disabled={quickBook.isPending}>
+                      Reservar
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="mb-10 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900/50">
+            <h2 className="mb-3 text-lg font-bold text-on-surface">Rendimiento de trabajadoras (90 días)</h2>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={staffChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <ReTooltip />
+                  <Legend />
+                  <Bar dataKey="citas" name="Citas" fill="#3b82f6" />
+                  <Bar dataKey="ingresos" name="Ingresos (miles CLP)" fill="#22c55e" />
+                  <Bar dataKey="fijas" name="Clientas fijas" fill="#a855f7" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
 
           {/* Nueva reunión */}
           <div className="mb-6 mt-10 flex flex-col gap-4 border-t border-slate-200 pt-10 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">

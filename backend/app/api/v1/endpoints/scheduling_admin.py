@@ -3,6 +3,7 @@ import csv
 import io
 import re
 import secrets
+import random
 from urllib.parse import quote
 from datetime import date, datetime, time, timedelta
 from typing import Optional, Literal, Any
@@ -1127,6 +1128,94 @@ async def list_appointments(
     return {"items": out}
 
 
+@router.get("/recommend-slots")
+async def recommend_slots(
+    branch_id: str,
+    service_id: str,
+    on_date: date,
+    preferred_time: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    ctx: StoreContext = Depends(require_store_permission(CREAR_CITA, VER_AGENDA_TIENDA)),
+):
+    """Recomienda horarios con distribución justa entre trabajadoras disponibles."""
+    ensure_branch_in_scope(ctx, branch_id)
+    branch = await db.get(Branch, branch_id)
+    if not branch or branch.store_id != ctx.store_id:
+        raise HTTPException(404, "Sede no encontrada")
+
+    pro_rows = await db.execute(
+        select(Professional.id, Professional.name)
+        .join(ProfessionalBranch, ProfessionalBranch.professional_id == Professional.id)
+        .join(ProfessionalService, ProfessionalService.professional_id == Professional.id)
+        .where(
+            Professional.store_id == ctx.store_id,
+            Professional.is_active.is_(True),
+            ProfessionalBranch.branch_id == branch_id,
+            ProfessionalService.service_id == service_id,
+        )
+        .distinct()
+    )
+    professionals = pro_rows.all()
+    if not professionals:
+        return {"items": []}
+
+    preferred_min = None
+    if preferred_time and ":" in preferred_time:
+        hh, mm = preferred_time.split(":", 1)
+        preferred_min = int(hh) * 60 + int(mm)
+
+    day_start = datetime(on_date.year, on_date.month, on_date.day)
+    day_end = day_start + timedelta(days=1)
+    load_rows = await db.execute(
+        select(Appointment.professional_id, func.count(Appointment.id))
+        .where(
+            Appointment.store_id == ctx.store_id,
+            Appointment.branch_id == branch_id,
+            Appointment.start_time >= day_start,
+            Appointment.start_time < day_end,
+            Appointment.status != AppointmentStatus.CANCELLED.value,
+        )
+        .group_by(Appointment.professional_id)
+    )
+    load_by_prof = {pid: int(cnt or 0) for pid, cnt in load_rows.all()}
+
+    recommendations: list[dict[str, Any]] = []
+    for pid, pname in professionals:
+        slots = await compute_slots(
+            db,
+            store_id=ctx.store_id,
+            branch_id=branch_id,
+            professional_id=pid,
+            service_id=service_id,
+            on_date=on_date,
+        )
+        if preferred_min is not None:
+            filtered = []
+            for s in slots:
+                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                if dt.hour * 60 + dt.minute >= preferred_min:
+                    filtered.append(s)
+            slots = filtered
+        if not slots:
+            continue
+        recommendations.append(
+            {
+                "professional_id": pid,
+                "professional_name": pname,
+                "workload_today": load_by_prof.get(pid, 0),
+                "start_time": slots[0],
+            }
+        )
+
+    if not recommendations:
+        return {"items": []}
+
+    # Justo: menor carga primero; empate aleatorio para no priorizar siempre a la misma persona.
+    random.shuffle(recommendations)
+    recommendations.sort(key=lambda x: (x["workload_today"], x["start_time"]))
+    return {"items": recommendations[:12]}
+
+
 @router.get("/reviews")
 async def list_reviews_and_stats(
     db: AsyncSession = Depends(get_db),
@@ -1416,9 +1505,32 @@ async def scheduling_operations_panel(
             "name": pname,
             "appointments_count_90d": int(v or 0),
             "revenue_cents_completed_90d": int(r or 0),
+            "fixed_clients_90d": 0,
         }
         for pid, pname, v, r in staff_rows.all()
     ]
+    fixed_sub = (
+        select(
+            Appointment.professional_id.label("pid"),
+            Appointment.client_id.label("cid"),
+            func.count(Appointment.id).label("visits"),
+        )
+        .where(
+            Appointment.store_id == sid,
+            Appointment.start_time >= win_start,
+            Appointment.client_id.is_not(None),
+            Appointment.status.in_([AppointmentStatus.CONFIRMED.value, AppointmentStatus.COMPLETED.value]),
+        )
+        .group_by(Appointment.professional_id, Appointment.client_id)
+        .having(func.count(Appointment.id) >= 2)
+        .subquery()
+    )
+    fixed_rows = await db.execute(
+        select(fixed_sub.c.pid, func.count(fixed_sub.c.cid)).group_by(fixed_sub.c.pid)
+    )
+    fixed_by_prof = {pid: int(cnt or 0) for pid, cnt in fixed_rows.all()}
+    for s in staff_out:
+        s["fixed_clients_90d"] = fixed_by_prof.get(s["professional_id"], 0)
     staff_out.sort(key=lambda x: x["revenue_cents_completed_90d"], reverse=True)
 
     svc_sales = await db.execute(
