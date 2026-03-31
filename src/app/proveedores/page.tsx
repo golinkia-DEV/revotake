@@ -1,22 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  LineChart,
-  Line,
-  Legend,
-} from "recharts";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, X } from "lucide-react";
 import AppLayout from "@/components/layout/AppLayout";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import Link from "next/link";
 
 type SupplierRow = {
   id: string;
@@ -59,6 +50,7 @@ function money(n: number) {
 
 export default function ProveedoresPage() {
   const qc = useQueryClient();
+  const [showAddSupplier, setShowAddSupplier] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [fromDate, setFromDate] = useState(() => {
     const d = new Date();
@@ -82,60 +74,111 @@ export default function ProveedoresPage() {
     onSuccess: () => {
       toast.success("Proveedor guardado");
       setForm(EMPTY);
+      setShowAddSupplier(false);
       qc.invalidateQueries({ queryKey: ["suppliers-full"] });
     },
     onError: () => toast.error("No se pudo guardar proveedor"),
   });
 
   const suppliers: SupplierRow[] = suppliersData?.items ?? [];
-  const bySupplier = reportData?.by_supplier ?? [];
-  const lineData = reportData?.timeline ?? [];
   const summary = reportData?.summary ?? {};
-
-  const barData = useMemo(
-    () =>
-      bySupplier.map((x: { supplier_name: string; amount_total: number; purchases_count: number }) => ({
-        name: x.supplier_name,
-        total: x.amount_total,
-        compras: x.purchases_count,
-      })),
-    [bySupplier],
-  );
 
   return (
     <AppLayout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-on-surface">Proveedores</h1>
-        <p className="text-sm text-slate-500">Ficha completa de proveedores, historial de compras y reportes por período.</p>
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-extrabold text-on-surface">Proveedores</h1>
+          <p className="text-sm text-slate-500">Ficha completa de proveedores, historial de compras y reportes por período.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddSupplier(true)}
+          className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-primary/20 hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          Agregar proveedor
+        </button>
       </div>
 
-      <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
-        <h2 className="mb-3 font-semibold text-on-surface">Agregar proveedor</h2>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <input className="input-field" placeholder="Nombre comercial *" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
-          <input className="input-field" placeholder="Razón social" value={form.legal_name} onChange={(e) => setForm((f) => ({ ...f, legal_name: e.target.value }))} />
-          <input className="input-field" placeholder="RUT" value={form.rut} onChange={(e) => setForm((f) => ({ ...f, rut: e.target.value }))} />
-          <input className="input-field" placeholder="Contacto" value={form.contact_name} onChange={(e) => setForm((f) => ({ ...f, contact_name: e.target.value }))} />
-          <input className="input-field" placeholder="Email *" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-          <input className="input-field" placeholder="Teléfono" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
-          <input className="input-field md:col-span-2" placeholder="Dirección" value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
-          <input className="input-field" placeholder="Región" value={form.region} onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))} />
-          <input className="input-field" placeholder="Ciudad / comuna" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
-          <input className="input-field" placeholder="Sitio web" value={form.website} onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))} />
-          <input className="input-field" placeholder="Condiciones de pago" value={form.payment_terms} onChange={(e) => setForm((f) => ({ ...f, payment_terms: e.target.value }))} />
-          <textarea className="input-field md:col-span-3 min-h-[80px]" placeholder="Notas" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
-        </div>
-        <div className="mt-3">
-          <button
-            type="button"
-            className="btn-primary text-sm"
-            disabled={!form.name.trim() || !form.email.trim() || createSupplier.isPending}
-            onClick={() => createSupplier.mutate()}
+      <AnimatePresence>
+        {showAddSupplier && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 p-4 backdrop-blur-[2px] sm:items-center"
+            onClick={() => {
+              setShowAddSupplier(false);
+              setForm(EMPTY);
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-supplier-title"
           >
-            Guardar proveedor
-          </button>
-        </div>
-      </div>
+            <motion.div
+              initial={{ y: 24, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0 }}
+              transition={{ type: "spring", damping: 28, stiffness: 320 }}
+              onClick={(e) => e.stopPropagation()}
+              className="max-h-[min(90vh,720px)] w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <div className="flex items-center justify-between border-b border-slate-200 px-4 py-4 dark:border-slate-800">
+                <h2 id="add-supplier-title" className="text-lg font-bold text-on-surface">
+                  Nuevo proveedor
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddSupplier(false);
+                    setForm(EMPTY);
+                  }}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  aria-label="Cerrar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="max-h-[calc(90vh-8rem)] overflow-y-auto p-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <input className="input-field" placeholder="Nombre comercial *" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                  <input className="input-field" placeholder="Razón social" value={form.legal_name} onChange={(e) => setForm((f) => ({ ...f, legal_name: e.target.value }))} />
+                  <input className="input-field" placeholder="RUT" value={form.rut} onChange={(e) => setForm((f) => ({ ...f, rut: e.target.value }))} />
+                  <input className="input-field" placeholder="Contacto" value={form.contact_name} onChange={(e) => setForm((f) => ({ ...f, contact_name: e.target.value }))} />
+                  <input className="input-field" placeholder="Email *" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+                  <input className="input-field" placeholder="Teléfono" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+                  <input className="input-field md:col-span-2" placeholder="Dirección" value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} />
+                  <input className="input-field" placeholder="Región" value={form.region} onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))} />
+                  <input className="input-field" placeholder="Ciudad / comuna" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
+                  <input className="input-field" placeholder="Sitio web" value={form.website} onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))} />
+                  <input className="input-field" placeholder="Condiciones de pago" value={form.payment_terms} onChange={(e) => setForm((f) => ({ ...f, payment_terms: e.target.value }))} />
+                  <textarea className="input-field md:col-span-3 min-h-[80px]" placeholder="Notas" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-slate-50/90 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/80">
+                <button
+                  type="button"
+                  className="min-h-[44px] rounded-xl px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-slate-800"
+                  onClick={() => {
+                    setShowAddSupplier(false);
+                    setForm(EMPTY);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary text-sm min-h-[44px]"
+                  disabled={!form.name.trim() || !form.email.trim() || createSupplier.isPending}
+                  onClick={() => createSupplier.mutate()}
+                >
+                  {createSupplier.isPending ? "Guardando…" : "Guardar proveedor"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
         <h2 className="mb-2 font-semibold text-on-surface">Listado de proveedores</h2>
@@ -168,40 +211,13 @@ export default function ProveedoresPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
-          <h3 className="mb-3 font-semibold text-on-surface">Compras por proveedor</h3>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip formatter={(value) => money(Number(value))} />
-                <Legend />
-                <Bar dataKey="total" name="Total comprado" fill="#3b82f6" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
-          <h3 className="mb-3 font-semibold text-on-surface">Histórico (línea de tiempo)</h3>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
-                <Tooltip formatter={(value) => money(Number(value))} />
-                <Legend />
-                {(reportData?.timeline_keys ?? []).slice(0, 6).map((k: string, idx: number) => (
-                  <Line key={k} dataKey={k} stroke={["#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ef4444", "#06b6d4"][idx % 6]} dot={false} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+      <p className="mb-4 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-slate-700 dark:text-slate-300">
+        Los gráficos de compras por proveedor e histórico están en el{" "}
+        <Link href="/dashboard" className="font-semibold text-primary hover:underline">
+          panel principal (dashboard)
+        </Link>
+        .
+      </p>
 
       <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
         <h3 className="mb-3 font-semibold text-on-surface">Top productos comprados por proveedor</h3>

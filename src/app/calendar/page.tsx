@@ -15,7 +15,6 @@ import clsx from "clsx";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
 import Link from "next/link";
 import { getStoreId } from "@/lib/store";
-import { BarChart, Bar, CartesianGrid, ResponsiveContainer, Tooltip as ReTooltip, XAxis, YAxis, Legend } from "recharts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -449,12 +448,6 @@ export default function CalendarPage() {
     queryFn: () => api.get("/scheduling/services").then((r) => r.data),
     enabled: !!storeId,
   });
-  const { data: panelData } = useQuery({
-    queryKey: ["scheduling-panel", storeId],
-    queryFn: () => api.get("/scheduling/panel").then((r) => r.data),
-    enabled: !!storeId,
-  });
-
   const branches: BranchRow[] = branchesData?.items ?? [];
   const allProfessionals: ProfessionalRow[] = professionalsData?.items ?? [];
   const services: ServiceRow[] = servicesData?.items ?? [];
@@ -575,12 +568,6 @@ export default function CalendarPage() {
       toast.error(msg);
     },
   });
-  const staffChartData = (panelData?.staff ?? []).map((s: { name: string; appointments_count_90d: number; revenue_cents_completed_90d: number; fixed_clients_90d: number }) => ({
-    name: s.name,
-    citas: s.appointments_count_90d,
-    ingresos: Math.round((s.revenue_cents_completed_90d || 0) / 1000),
-    fijas: s.fixed_clients_90d || 0,
-  }));
 
   return (
     <AppLayout>
@@ -978,23 +965,13 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <div className="mb-10 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900/50">
-            <h2 className="mb-3 text-lg font-bold text-on-surface">Rendimiento de trabajadoras (90 días)</h2>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={staffChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <ReTooltip />
-                  <Legend />
-                  <Bar dataKey="citas" name="Citas" fill="#3b82f6" />
-                  <Bar dataKey="ingresos" name="Ingresos (miles CLP)" fill="#22c55e" />
-                  <Bar dataKey="fijas" name="Clientas fijas" fill="#a855f7" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
+          <p className="mb-10 text-sm text-slate-600 dark:text-slate-400">
+            Gráfico de rendimiento de trabajadoras (90 días):{" "}
+            <Link href="/dashboard" className="font-semibold text-primary hover:underline">
+              ver en el panel principal
+            </Link>
+            .
+          </p>
 
           {/* Nueva reunión */}
           <div className="mb-6 mt-10 flex flex-col gap-4 border-t border-slate-200 pt-10 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">

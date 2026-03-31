@@ -639,9 +639,9 @@ class ServiceCreate(BaseModel):
     category: Optional[str] = None
     menu_sort_order: int = 0
     description: Optional[str] = None
-    duration_minutes: int = 30
-    buffer_before_minutes: int = 0
-    buffer_after_minutes: int = 0
+    duration_minutes: int = Field(30, ge=5, le=720)
+    buffer_before_minutes: int = Field(0, ge=0, le=240)
+    buffer_after_minutes: int = Field(0, ge=0, le=240)
     price_cents: int = 0
     currency: str = "CLP"
     product_id: Optional[str] = None
@@ -805,9 +805,9 @@ class ServicePatch(BaseModel):
     category: Optional[str] = None
     menu_sort_order: Optional[int] = None
     description: Optional[str] = None
-    duration_minutes: Optional[int] = None
-    buffer_before_minutes: Optional[int] = None
-    buffer_after_minutes: Optional[int] = None
+    duration_minutes: Optional[int] = Field(None, ge=5, le=720)
+    buffer_before_minutes: Optional[int] = Field(None, ge=0, le=240)
+    buffer_after_minutes: Optional[int] = Field(None, ge=0, le=240)
     price_cents: Optional[int] = None
     currency: Optional[str] = None
     product_id: Optional[str] = None
@@ -1400,7 +1400,14 @@ async def patch_appointment(
         if a.ticket_id:
             tk = await db.get(Ticket, a.ticket_id)
             if tk and tk.store_id == ctx.store_id:
-                tk.status = TicketStatus.CLOSED
+                # Al completar la cita, marcamos "sold" para mantener trazabilidad
+                # del flujo (el cierre final puede quedar manual en el tablero).
+                tk.status = TicketStatus.SOLD
+    elif a.status in (AppointmentStatus.CANCELLED.value, AppointmentStatus.NO_SHOW.value):
+        if a.ticket_id:
+            tk = await db.get(Ticket, a.ticket_id)
+            if tk and tk.store_id == ctx.store_id and tk.status != TicketStatus.CLOSED:
+                tk.status = TicketStatus.NO_RESPONSE
 
     await log_appointment_action(
         db,

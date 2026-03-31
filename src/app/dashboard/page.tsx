@@ -1,11 +1,31 @@
 "use client";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Users, Kanban, AlertTriangle, Calendar, TrendingUp, ArrowRight } from "lucide-react";
+import { Users, Kanban, AlertTriangle, Calendar, TrendingUp, ArrowRight, BarChart3 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip as ReTooltip,
+  Legend,
+  LineChart,
+  Line,
+} from "recharts";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
 import Link from "next/link";
 import { MaterialIcon } from "@/components/ui/MaterialIcon";
+import { getStoreId } from "@/lib/store";
+
+function moneyCLP(n: number) {
+  return new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 }).format(
+    Math.round(n || 0),
+  );
+}
 
 function StatCard({
   label,
@@ -46,7 +66,49 @@ function StatCard({
 }
 
 export default function DashboardPage() {
+  const storeId = typeof window !== "undefined" ? getStoreId() : null;
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [toDate, setToDate] = useState(() => new Date().toISOString().slice(0, 10));
+
   const { data: stats } = useQuery({ queryKey: ["dashboard-stats"], queryFn: () => api.get("/dashboard/stats").then((r) => r.data) });
+
+  const { data: panelData } = useQuery({
+    queryKey: ["scheduling-panel", storeId],
+    queryFn: () => api.get("/scheduling/panel").then((r) => r.data),
+    enabled: !!storeId,
+  });
+
+  const { data: reportData } = useQuery({
+    queryKey: ["suppliers-report", fromDate, toDate],
+    queryFn: () => api.get("/products/suppliers/report", { params: { from_date: fromDate, to_date: toDate } }).then((r) => r.data),
+    enabled: !!storeId,
+  });
+
+  const staffChartData = (panelData?.staff ?? []).map(
+    (s: { name: string; appointments_count_90d: number; revenue_cents_completed_90d: number; fixed_clients_90d: number }) => ({
+      name: s.name,
+      citas: s.appointments_count_90d,
+      ingresos: Math.round((s.revenue_cents_completed_90d || 0) / 1000),
+      fijas: s.fixed_clients_90d || 0,
+    }),
+  );
+
+  const bySupplier = reportData?.by_supplier ?? [];
+  const barData = useMemo(
+    () =>
+      bySupplier.map((x: { supplier_name: string; amount_total: number; purchases_count: number }) => ({
+        name: x.supplier_name,
+        total: x.amount_total,
+        compras: x.purchases_count,
+      })),
+    [bySupplier],
+  );
+  const lineData = reportData?.timeline ?? [];
+  const summary = reportData?.summary ?? {};
 
   return (
     <AppLayout>
@@ -122,6 +184,128 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      <section className="mt-10 border-t border-slate-200 pt-10 dark:border-slate-800">
+        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="mb-1 text-xs font-bold uppercase tracking-widest text-primary">Visualizaciones</p>
+            <h2 className="flex items-center gap-2 text-xl font-extrabold text-on-surface">
+              <BarChart3 className="h-6 w-6 text-primary" />
+              Gráficos del panel
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Todos los gráficos de la aplicación se concentran aquí. La agenda y proveedores enlazan a esta sección cuando aplica.
+            </p>
+          </div>
+        </div>
+
+        {!storeId ? (
+          <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+            Seleccioná una tienda para cargar los gráficos.
+          </p>
+        ) : (
+          <div className="space-y-10">
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900/50"
+            >
+              <h3 className="mb-1 text-lg font-bold text-on-surface">Rendimiento de trabajadoras (90 días)</h3>
+              <p className="mb-4 text-sm text-slate-500">Citas, ingresos estimados (miles CLP) y clientas fijas por profesional.</p>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={staffChartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <ReTooltip />
+                    <Legend />
+                    <Bar dataKey="citas" name="Citas" fill="#3b82f6" />
+                    <Bar dataKey="ingresos" name="Ingresos (miles CLP)" fill="#22c55e" />
+                    <Bar dataKey="fijas" name="Clientas fijas" fill="#a855f7" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-3 text-xs text-slate-500">
+                Datos del panel de atención.{" "}
+                <Link href="/calendar" className="font-semibold text-primary hover:underline">
+                  Ir a agenda
+                </Link>
+              </p>
+            </motion.div>
+
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+              <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-on-surface">Compras a proveedores</h3>
+                  <p className="text-sm text-slate-500">Período del reporte (mismos datos que en la página Proveedores).</p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Desde</label>
+                    <input type="date" className="input-field" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">Hasta</label>
+                    <input type="date" className="input-field" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-slate-500">Total comprado</p>
+                    <p className="text-lg font-bold text-on-surface">{moneyCLP(summary.amount_total || 0)}</p>
+                    <p className="text-xs text-slate-500">
+                      {summary.purchases_count || 0} compras · {summary.suppliers_with_purchases || 0} proveedores
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                  <h4 className="mb-3 font-semibold text-on-surface">Compras por proveedor</h4>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={barData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="name" />
+                        <YAxis />
+                        <ReTooltip formatter={(value) => moneyCLP(Number(value))} />
+                        <Legend />
+                        <Bar dataKey="total" name="Total comprado" fill="#3b82f6" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                  <h4 className="mb-3 font-semibold text-on-surface">Histórico (línea de tiempo)</h4>
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={lineData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="date" />
+                        <YAxis />
+                        <ReTooltip formatter={(value) => moneyCLP(Number(value))} />
+                        <Legend />
+                        {(reportData?.timeline_keys ?? []).slice(0, 6).map((k: string, idx: number) => (
+                          <Line
+                            key={k}
+                            dataKey={k}
+                            stroke={["#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ef4444", "#06b6d4"][idx % 6]}
+                            dot={false}
+                          />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </div>
+              <p className="mt-4 text-sm">
+                <Link href="/proveedores" className="font-semibold text-primary hover:underline">
+                  Gestionar proveedores y tablas detalladas
+                </Link>
+              </p>
+            </motion.div>
+          </div>
+        )}
+      </section>
     </AppLayout>
   );
 }
