@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.core.database import get_db
 from app.core.deps import StoreContext, require_store
 from app.models.form_link import FormLink
@@ -33,7 +33,7 @@ async def create_form_link(data: FormLinkCreate, db: AsyncSession = Depends(get_
         tr = await db.execute(select(Ticket.id).where(Ticket.id == data.ticket_id, Ticket.store_id == ctx.store_id))
         if tr.scalar_one_or_none() is None:
             raise HTTPException(400, "Ticket no pertenece a esta tienda")
-    expires_at = datetime.utcnow() + timedelta(hours=data.expires_hours)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=data.expires_hours)
     form = FormLink(store_id=ctx.store_id, client_id=data.client_id, ticket_id=data.ticket_id, form_schema=data.form_schema, expires_at=expires_at)
     db.add(form)
     return {"id": form.id, "token": form.token, "expires_at": form.expires_at}
@@ -44,7 +44,7 @@ async def get_form(token: str, db: AsyncSession = Depends(get_db)):
     form = result.scalar_one_or_none()
     if not form:
         raise HTTPException(404, "Form not found")
-    if datetime.utcnow() > form.expires_at:
+    if datetime.now(timezone.utc).replace(tzinfo=None) > form.expires_at:
         raise HTTPException(410, "Form has expired")
     if form.is_used:
         raise HTTPException(409, "Form already submitted")
@@ -56,7 +56,7 @@ async def submit_form(token: str, data: FormResponse, db: AsyncSession = Depends
     form = result.scalar_one_or_none()
     if not form:
         raise HTTPException(404)
-    if datetime.utcnow() > form.expires_at:
+    if datetime.now(timezone.utc).replace(tzinfo=None) > form.expires_at:
         raise HTTPException(410, "Form expired")
     if form.is_used:
         raise HTTPException(409, "Already submitted")

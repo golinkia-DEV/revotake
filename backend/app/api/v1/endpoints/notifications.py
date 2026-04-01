@@ -1,5 +1,5 @@
 """Agrega alertas de stock, citas próximas y lista de espera en un solo endpoint."""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, func
@@ -21,7 +21,7 @@ async def get_notifications(
     ctx: StoreContext = Depends(require_store),
 ):
     sid = ctx.store_id
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     items = []
 
     # Stock crítico

@@ -1,7 +1,7 @@
 """Reserva atómica con bloqueo por profesional (PostgreSQL advisory lock)."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select, or_
@@ -39,7 +39,7 @@ async def _has_overlap(
     end: datetime,
     exclude_appointment_id: str | None = None,
 ) -> bool:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     active = (
         AppointmentStatus.CONFIRMED.value,
         AppointmentStatus.PENDING_PAYMENT.value,
@@ -113,7 +113,7 @@ async def create_appointment_booking(
     if payment_mode == PaymentMode.ONLINE.value:
         status = AppointmentStatus.PENDING_PAYMENT.value
         pay_stat = PaymentStatus.PENDING.value
-        hold = datetime.utcnow() + timedelta(minutes=hold_minutes)
+        hold = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=hold_minutes)
     else:
         status = AppointmentStatus.CONFIRMED.value
         pay_stat = PaymentStatus.NOT_REQUIRED.value
@@ -163,7 +163,7 @@ async def cancel_appointment_with_policy(
     if appointment.status in (AppointmentStatus.CANCELLED.value, AppointmentStatus.COMPLETED.value):
         return {"ok": False, "error": "La cita no se puede cancelar"}
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     policy_violated = False
     fee_cents = 0
 
@@ -191,7 +191,7 @@ async def expire_pending_payment_holds(db: AsyncSession) -> int:
     """Libera citas pending_payment con hold vencido."""
     from sqlalchemy import update
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     r = await db.execute(
         update(Appointment)
         .where(
@@ -213,7 +213,7 @@ async def schedule_reminder_jobs(
     suggest_rebooking_days: int = 0,
 ) -> None:
     """Encola recordatorios 24h y 1h antes, confirmación inmediata, reseña y re-agendamiento."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     t24 = start_time - timedelta(hours=24)
     t1 = start_time - timedelta(hours=1)
 

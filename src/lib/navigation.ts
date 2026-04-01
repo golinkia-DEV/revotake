@@ -55,6 +55,7 @@ const STORE_ADMIN_SECTIONS: NavSection[] = [
     items: [
       { href: "/clients", label: "Clientes", icon: "group", perm: "ver_base_clientes" },
       { href: "/scheduling", label: "Citas", icon: "event_available", filled: true, perm: "ver_agenda_tienda" },
+      { href: "/scheduling/flash-deals", label: "Ofertas Flash", icon: "bolt", filled: true, perm: "ver_agenda_tienda" },
       { href: "/scheduling/services", label: "Crear servicios", icon: "menu_book", filled: true, perm: "ver_catalogo_agenda" },
     ],
   },

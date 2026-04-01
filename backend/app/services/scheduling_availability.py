@@ -1,7 +1,7 @@
 """Cálculo de slots disponibles: sucursal + profesional + servicio + fecha."""
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Sequence
 
 from sqlalchemy import select, or_
@@ -117,7 +117,7 @@ async def _get_blocked_intervals(
         AppointmentStatus.PENDING_PAYMENT.value,
         AppointmentStatus.COMPLETED.value,
     )
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     q = await db.execute(
         select(Appointment.start_time, Appointment.end_time).where(
             Appointment.professional_id == professional_id,
@@ -199,7 +199,7 @@ async def compute_slots(
                 if _intervals_overlap(start_dt, end_dt, bs, be):
                     ok = False
                     break
-            if ok and start_dt >= datetime.utcnow():
+            if ok and start_dt >= datetime.now(timezone.utc).replace(tzinfo=None):
                 out.append(start_dt.isoformat() + "Z")
             t += SLOT_STEP_MINUTES
     return out

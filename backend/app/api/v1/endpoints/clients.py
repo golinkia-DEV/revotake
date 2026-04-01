@@ -1,6 +1,6 @@
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException
@@ -501,7 +501,7 @@ async def add_worker_note(
         raise HTTPException(404, "Client not found")
     cf = dict(client.custom_fields or {})
     notes = cf.get("worker_notes") if isinstance(cf.get("worker_notes"), list) else []
-    notes.append({"note": data.note.strip(), "user": current_user.name or current_user.email, "at": datetime.utcnow().isoformat()})
+    notes.append({"note": data.note.strip(), "user": current_user.name or current_user.email, "at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat()})
     cf["worker_notes"] = notes[-100:]
     client.custom_fields = cf
     return {"ok": True}

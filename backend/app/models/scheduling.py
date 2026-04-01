@@ -1,6 +1,6 @@
 import enum
 import uuid
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timezone
 
 from sqlalchemy import (
     String,
@@ -85,7 +85,7 @@ class Branch(Base):
     address_line: Mapped[str | None] = mapped_column(Text, nullable=True)
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class WorkStation(Base):
@@ -102,7 +102,7 @@ class WorkStation(Base):
     kind: Mapped[str] = mapped_column(String(32), default="chair")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class Professional(Base):
@@ -128,7 +128,7 @@ class Professional(Base):
     # % único sobre ventas de productos (inventario) para este profesional; null = sin comisión productos
     product_commission_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class ProfessionalBranch(Base):
@@ -177,7 +177,7 @@ class Service(Base):
     # Hasta 5 URLs públicas de fotos del servicio (galería en reserva / menú)
     image_urls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class ProfessionalService(Base):
@@ -205,7 +205,7 @@ class AvailabilityRule(Base):
     start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class Holiday(Base):
@@ -247,8 +247,8 @@ class Appointment(Base):
     # Monto cobrado al cerrar (puede diferir de price_cents del servicio / producto)
     charged_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     session_closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=datetime.utcnow)
 
 
 class AppointmentAuditLog(Base):
@@ -259,7 +259,7 @@ class AppointmentAuditLog(Base):
     actor_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     action: Mapped[str] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class NotificationJob(Base):
@@ -289,8 +289,8 @@ class PaymentAttempt(Base):
     status: Mapped[str] = mapped_column(String(32), default=PaymentAttemptStatus.PENDING.value)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     raw_payload: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), onupdate=datetime.utcnow)
 
 
 class AppointmentReview(Base):
@@ -309,7 +309,7 @@ class AppointmentReview(Base):
     professional_id: Mapped[str] = mapped_column(ForeignKey("professionals.id"), index=True)
     rating: Mapped[int] = mapped_column(Integer)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
 
 class WaitlistEntry(Base):
@@ -331,4 +331,4 @@ class WaitlistEntry(Base):
     # Estado: waiting, notified, booked, expired
     status: Mapped[str] = mapped_column(String(32), default="waiting", index=True)
     notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

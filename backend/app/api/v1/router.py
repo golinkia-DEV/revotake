@@ -18,6 +18,7 @@ from app.api.v1.endpoints import (
     scheduling_staff,
     scheduling_public,
     scheduling_webhooks,
+    flash_deals,
 )
 
 api_router = APIRouter()
@@ -42,7 +43,9 @@ async def api_v1_root():
             "/dashboard",
             "/internal",
             "/scheduling",
+            "/scheduling/flash-deals",
             "/public/scheduling",
+            "/public/scheduling/{slug}/flash-deals",
             "/webhooks/scheduling",
             "/uploads",
         ],
@@ -67,3 +70,4 @@ api_router.include_router(scheduling_admin.router, prefix="/scheduling", tags=["
 api_router.include_router(scheduling_staff.router, prefix="/scheduling", tags=["scheduling-staff"])
 api_router.include_router(scheduling_public.router, prefix="/public/scheduling", tags=["scheduling-public"])
 api_router.include_router(scheduling_webhooks.router, prefix="/webhooks/scheduling", tags=["webhooks-scheduling"])
+api_router.include_router(flash_deals.router, prefix="/scheduling", tags=["flash-deals"])

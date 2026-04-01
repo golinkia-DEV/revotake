@@ -1,5 +1,5 @@
 """Reserva pública por slug de tienda (sin JWT)."""
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -337,7 +337,7 @@ async def public_manage_get(manage_token: str, db: AsyncSession = Depends(get_db
     svc = await db.get(Service, appt.service_id)
     prof = await db.get(Professional, appt.professional_id)
     br = await db.get(Branch, appt.branch_id)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     past_visit = appt.end_time <= now
     cancellable_status = appt.status != AppointmentStatus.CANCELLED.value
     existing = (
@@ -428,7 +428,7 @@ async def public_manage_submit_review(
         raise HTTPException(404, "Cita no encontrada")
     if appt.status == AppointmentStatus.CANCELLED.value:
         raise HTTPException(400, "No se puede calificar una cita cancelada")
-    if appt.end_time > datetime.utcnow():
+    if appt.end_time > datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(400, "Podés calificar después de la hora de término de la cita")
 
     dup = (
@@ -522,3 +522,130 @@ async def public_waitlist_count(
     )
     count = r.scalar_one_or_none() or 0
     return {"waiting_count": count, "date": desired_date.isoformat()}
+
+
+# ── Ofertas Flash (pública) ────────────────────────────────────────────────────
+
+
+@router.get("/{store_slug}/flash-deals")
+async def public_flash_deals(store_slug: str, db: AsyncSession = Depends(get_db)):
+    """Lista ofertas flash activas y no vencidas para el booking público."""
+    from app.models.flash_deal import FlashDeal
+
+    store = await _store_by_slug(db, store_slug)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    r = await db.execute(
+        select(FlashDeal).where(
+            FlashDeal.store_id == store.id,
+            FlashDeal.is_active.is_(True),
+            FlashDeal.expires_at > now,
+            FlashDeal.appointment_id.is_(None),
+        ).order_by(FlashDeal.slot_start_time.asc())
+    )
+    deals = r.scalars().all()
+
+    result = []
+    for deal in deals:
+        prof = await db.get(Professional, deal.professional_id)
+        svc = await db.get(Service, deal.service_id)
+        branch = await db.get(Branch, deal.branch_id)
+        discounted = max(0, deal.original_price_cents - int(deal.original_price_cents * deal.discount_percent / 100))
+        result.append({
+            "id": deal.id,
+            "title": deal.title,
+            "description": deal.description,
+            "discount_percent": deal.discount_percent,
+            "original_price_cents": deal.original_price_cents,
+            "discounted_price_cents": discounted,
+            "slot_start_time": deal.slot_start_time.isoformat(),
+            "slot_end_time": deal.slot_end_time.isoformat(),
+            "expires_at": deal.expires_at.isoformat(),
+            "branch_id": deal.branch_id,
+            "professional_id": deal.professional_id,
+            "service_id": deal.service_id,
+            "professional_name": prof.name if prof else None,
+            "service_name": svc.name if svc else None,
+            "branch_name": branch.name if branch else None,
+            "duration_minutes": svc.duration_minutes if svc else None,
+            "currency": svc.currency if svc else "CLP",
+        })
+
+    return {"items": result}
+
+
+@router.post("/{store_slug}/flash-deals/{deal_id}/claim")
+async def claim_flash_deal(
+    store_slug: str,
+    deal_id: str,
+    data: PublicBookingCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reclama una oferta flash: crea appointment con descuento aplicado.
+    Verifica deal activo, no vencido y no reclamado.
+    """
+    from app.models.flash_deal import FlashDeal
+
+    store = await _store_by_slug(db, store_slug)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    deal = await db.get(FlashDeal, deal_id)
+    if not deal or deal.store_id != store.id:
+        raise HTTPException(404, "Oferta no encontrada")
+    if not deal.is_active:
+        raise HTTPException(400, "Esta oferta ya no está activa")
+    if deal.expires_at <= now:
+        raise HTTPException(400, "Esta oferta ya venció")
+    if deal.appointment_id is not None:
+        raise HTTPException(400, "Esta oferta ya fue reclamada")
+
+    # Crear cliente
+    client = Client(
+        store_id=store.id,
+        name=data.client_name.strip(),
+        email=(data.client_email or "").strip() or None,
+        phone=(data.client_phone or "").strip() or None,
+    )
+    db.add(client)
+    await db.flush()
+
+    # Crear cita con el slot de la deal (ignoramos branch/professional/service del body)
+    svc = await db.get(Service, deal.service_id)
+    try:
+        appt, extra = await create_appointment_booking(
+            db,
+            store_id=store.id,
+            branch_id=deal.branch_id,
+            professional_id=deal.professional_id,
+            service_id=deal.service_id,
+            client_id=client.id,
+            start_time=deal.slot_start_time,
+            payment_mode=data.payment_mode,
+            notes=data.notes,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    # Marcar deal como reclamada
+    deal.appointment_id = appt.id
+    deal.claimed_at = now
+
+    await db.commit()
+    await db.refresh(deal)
+
+    discounted = max(0, deal.original_price_cents - int(deal.original_price_cents * deal.discount_percent / 100))
+
+    return {
+        "appointment_id": appt.id,
+        "manage_token": appt.manage_token,
+        "status": appt.status,
+        "flash_deal": {
+            "id": deal.id,
+            "title": deal.title,
+            "discount_percent": deal.discount_percent,
+            "original_price_cents": deal.original_price_cents,
+            "discounted_price_cents": discounted,
+        },
+        "message": f"¡Oferta aplicada! Ahorra {deal.discount_percent}% con esta oferta flash.",
+    }

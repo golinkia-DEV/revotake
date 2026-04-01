@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import json
 import anthropic
@@ -54,12 +54,12 @@ Para soporte adicional visita la documentación o contacta al equipo de RevoTake
 """
 
 class ChatMessage(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1, max_length=2000)
     client_id: Optional[str] = None
     context: dict = {}
 
 class HelpMessage(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1, max_length=1000)
 
 class StoreContextUpdate(BaseModel):
     business_context: str

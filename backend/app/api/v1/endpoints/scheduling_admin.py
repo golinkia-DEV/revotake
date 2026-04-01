@@ -5,7 +5,7 @@ import re
 import secrets
 import random
 from urllib.parse import quote
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional, Literal, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -207,7 +207,7 @@ async def branch_stations_occupancy(
     br = await db.get(Branch, branch_id)
     if not br or br.store_id != ctx.store_id:
         raise HTTPException(404, "Sede no encontrada")
-    now = at or datetime.utcnow()
+    now = at or datetime.now(timezone.utc).replace(tzinfo=None)
     r_st = await db.execute(
         select(WorkStation)
         .where(WorkStation.branch_id == branch_id, WorkStation.is_active.is_(True))
@@ -461,7 +461,7 @@ async def create_professional(
             raise HTTPException(400, "Cada comisión de servicio debe estar entre 0 y 100")
 
     token = secrets.token_urlsafe(36)[:64]
-    exp = datetime.utcnow() + timedelta(days=7)
+    exp = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7)
 
     p = Professional(
         store_id=ctx.store_id,
@@ -1396,7 +1396,7 @@ async def patch_appointment(
         svc = await db.get(Service, a.service_id)
         if a.charged_price_cents is None:
             a.charged_price_cents = int(svc.price_cents) if svc else 0
-        a.session_closed_at = datetime.utcnow()
+        a.session_closed_at = datetime.now(timezone.utc).replace(tzinfo=None)
         if a.ticket_id:
             tk = await db.get(Ticket, a.ticket_id)
             if tk and tk.store_id == ctx.store_id:
@@ -1456,7 +1456,7 @@ async def scheduling_operations_panel(
     ctx: StoreContext = Depends(require_store_permission(VER_AGENDA_TIENDA, VER_REPORTES)),
 ):
     sid = ctx.store_id
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     win_start = now - timedelta(days=90)
     t15 = now + timedelta(minutes=15)
     t30 = now - timedelta(minutes=30)

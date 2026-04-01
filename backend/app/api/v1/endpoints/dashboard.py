@@ -8,7 +8,7 @@ from app.models.client import Client
 from app.models.ticket import Ticket, TicketStatus
 from app.models.product import Product
 from app.models.meeting import Meeting
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter()
 
@@ -23,8 +23,8 @@ async def get_stats(db: AsyncSession = Depends(get_db), ctx: StoreContext = Depe
     upcoming_meetings = await db.execute(
         select(func.count(Meeting.id)).where(
             Meeting.store_id == sid,
-            Meeting.start_time >= datetime.utcnow(),
-            Meeting.start_time <= datetime.utcnow() + timedelta(days=7),
+            Meeting.start_time >= datetime.now(timezone.utc).replace(tzinfo=None),
+            Meeting.start_time <= datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=7),
         )
     )
     return {

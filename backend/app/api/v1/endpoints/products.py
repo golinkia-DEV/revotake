@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -163,7 +163,7 @@ async def recalculate_stock_status(product: Product, db: AsyncSession):
         product.days_of_stock = 0.0
         product.stock_status = "critical"
         return
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
     result = await db.execute(
         select(func.sum(Purchase.quantity)).where(
             Purchase.product_id == product.id,
@@ -375,7 +375,7 @@ async def branch_stock_report(
     if not branches:
         return {"branches": []}
 
-    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    thirty_days_ago = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
 
     # Stock por sede: sum quantities
     pbs_r = await db.execute(

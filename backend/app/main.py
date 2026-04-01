@@ -18,6 +18,8 @@ from app.services.scheduling_booking import expire_pending_payment_holds
 
 logger = logging.getLogger(__name__)
 
+_INSECURE_DEFAULT_KEY = "super-secret-key-change-in-production"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -50,6 +52,12 @@ async def lifespan(app: FastAPI):
             except Exception:
                 logger.exception("Worker de notificaciones de agenda")
             await asyncio.sleep(max(30, min(120, settings.MEETING_REMINDER_INTERVAL_SEC)))
+
+    if settings.SECRET_KEY == _INSECURE_DEFAULT_KEY:
+        logger.warning(
+            "SECURITY: SECRET_KEY es el valor por defecto. "
+            "Define SECRET_KEY en tu .env antes de ir a producción."
+        )
 
     task_m = asyncio.create_task(worker_meetings())
     task_s = asyncio.create_task(worker_scheduling())

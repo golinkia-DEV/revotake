@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,7 @@ def reminder_hours_for_store(store: Store) -> int:
 
 async def process_meeting_reminders(db: AsyncSession) -> int:
     """Envía recordatorios para citas que entran en la ventana (N horas antes) y aún no tienen recordatorio."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     result = await db.execute(
         select(Meeting).where(
             Meeting.reminder_sent_at.is_(None),

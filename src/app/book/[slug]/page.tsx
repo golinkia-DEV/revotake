@@ -51,6 +51,26 @@ type ServiceItem = {
 
 const PUB_GENERAL = "__general__";
 
+type FlashDealPublic = {
+  id: string;
+  title: string;
+  description: string | null;
+  discount_percent: number;
+  original_price_cents: number;
+  discounted_price_cents: number;
+  slot_start_time: string;
+  slot_end_time: string;
+  expires_at: string;
+  branch_id: string;
+  professional_id: string;
+  service_id: string;
+  professional_name: string | null;
+  service_name: string | null;
+  branch_name: string | null;
+  duration_minutes: number | null;
+  currency: string;
+};
+
 function pubCategoryKey(c: string | null | undefined) {
   const t = (c || "").trim();
   return t ? t : PUB_GENERAL;
@@ -237,6 +257,7 @@ export default function PublicBookPage() {
   const [clientPhone, setClientPhone] = useState("");
   const [intakeAnswers, setIntakeAnswers] = useState<Record<string, string>>({});
   const [waitlistJoined, setWaitlistJoined] = useState(false);
+  const [selectedFlashDealId, setSelectedFlashDealId] = useState<string | null>(null);
   const [svcSearch, setSvcSearch] = useState("");
   const [svcFilterCat, setSvcFilterCat] = useState<string | "__all__">("__all__");
   const [svcOpenCats, setSvcOpenCats] = useState<Record<string, boolean>>({});
@@ -345,8 +366,8 @@ export default function PublicBookPage() {
   };
 
   const book = useMutation({
-    mutationFn: () =>
-      publicApi.post(`/public/scheduling/${slug}/bookings`, {
+    mutationFn: () => {
+      const payload = {
         branch_id: branchId,
         professional_id: professionalId,
         service_id: serviceId,
@@ -356,9 +377,19 @@ export default function PublicBookPage() {
         client_email: clientEmail || null,
         client_phone: clientPhone || null,
         intake_answers: Object.keys(intakeAnswers).length > 0 ? intakeAnswers : null,
-      }),
+      };
+      // Si hay oferta flash seleccionada, usar el endpoint de claim
+      if (selectedFlashDealId) {
+        return publicApi.post(`/public/scheduling/${slug}/flash-deals/${selectedFlashDealId}/claim`, payload);
+      }
+      return publicApi.post(`/public/scheduling/${slug}/bookings`, payload);
+    },
     onSuccess: (res) => {
-      toast.success("¡Cita registrada!");
+      if (selectedFlashDealId) {
+        toast.success(`¡Oferta reclamada! Ahorra ${res.data.flash_deal?.discount_percent ?? 0}% con esta oferta flash.`);
+      } else {
+        toast.success("¡Cita registrada!");
+      }
       window.location.href = `/book/manage/${res.data.manage_token}`;
     },
     onError: (e: unknown) => {
@@ -387,6 +418,26 @@ export default function PublicBookPage() {
 
   const hasIntakeForm = (selectedService?.intake_form_schema?.length ?? 0) > 0;
   const noSlotsAvailable = slots.data && slots.data.slots?.length === 0 && !slots.isLoading;
+
+  const flashDeals = useQuery({
+    queryKey: ["pub-flash-deals", slug],
+    queryFn: () => publicApi.get(`/public/scheduling/${slug}/flash-deals`).then((r) => r.data),
+    enabled: !!slug,
+    refetchInterval: 30_000,
+  });
+  const flashDealItems: FlashDealPublic[] = flashDeals.data?.items ?? [];
+
+  function applyFlashDeal(deal: FlashDealPublic) {
+    setServiceId(deal.service_id);
+    setBranchId(deal.branch_id);
+    setProfessionalId(deal.professional_id);
+    const dt = new Date(deal.slot_start_time);
+    setOnDate(dt.toISOString().slice(0, 10));
+    setSlotStart(deal.slot_start_time);
+    setSelectedFlashDealId(deal.id);
+    setStep(5); // Saltar directo a datos del cliente — slot ya está fijo
+    toast.success(`¡Oferta aplicada! -${deal.discount_percent}% en ${deal.service_name ?? "servicio"}`);
+  }
 
   if (meta.isError) {
     return (
@@ -447,6 +498,69 @@ export default function PublicBookPage() {
               </motion.div>
             );
           })()}
+
+        {/* Ofertas Flash */}
+        {flashDealItems.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-lg">⚡</span>
+              <h2 className="font-bold text-amber-700 dark:text-amber-400">Ofertas Flash</h2>
+              <span className="rounded-full bg-amber-500 px-2 py-0.5 text-xs font-bold text-white">
+                {flashDealItems.length}
+              </span>
+            </div>
+            <div className="space-y-3">
+              {flashDealItems.map((deal) => {
+                const slotDt = new Date(deal.slot_start_time);
+                const timeStr = slotDt.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+                const dateStr = slotDt.toLocaleDateString("es-CL", { weekday: "short", day: "numeric", month: "short" });
+                return (
+                  <div
+                    key={deal.id}
+                    className="rounded-2xl border-2 border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-4 dark:border-amber-700 dark:from-amber-950 dark:to-orange-950"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-xs font-bold text-white">
+                            -{deal.discount_percent}% OFF
+                          </span>
+                        </div>
+                        <p className="font-semibold text-slate-900 dark:text-white text-sm">{deal.title}</p>
+                        {deal.description && (
+                          <p className="text-xs text-slate-500 mt-0.5">{deal.description}</p>
+                        )}
+                        <div className="mt-2 space-y-0.5 text-xs text-slate-600 dark:text-slate-300">
+                          {deal.professional_name && (
+                            <p>Con <span className="font-medium">{deal.professional_name}</span></p>
+                          )}
+                          {deal.service_name && (
+                            <p>Servicio: <span className="font-medium">{deal.service_name}</span></p>
+                          )}
+                          <p>Horario: <span className="font-medium">{dateStr} {timeStr}</span></p>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-xs text-slate-400 line-through">
+                            {deal.original_price_cents > 0 ? `${(deal.original_price_cents / 100).toLocaleString("es-CL")} ${deal.currency}` : ""}
+                          </span>
+                          <span className="text-base font-bold text-emerald-700">
+                            {deal.discounted_price_cents === 0 ? "Gratis" : `${(deal.discounted_price_cents / 100).toLocaleString("es-CL")} ${deal.currency}`}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => applyFlashDeal(deal)}
+                        className="shrink-0 rounded-xl bg-amber-500 px-3 py-2 text-xs font-bold text-white hover:bg-amber-600 active:scale-95 transition-all"
+                      >
+                        Tomar esta<br />oferta
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 8 }}
@@ -773,6 +887,29 @@ export default function PublicBookPage() {
                 {selectedService?.name} · {new Date(slotStart || "").toLocaleString("es-CL")}
               </p>
 
+              {/* Banner oferta flash activa */}
+              {selectedFlashDealId && (() => {
+                const activeDeal = flashDealItems.find((d) => d.id === selectedFlashDealId);
+                if (!activeDeal) return null;
+                const discounted = activeDeal.discounted_price_cents;
+                const original = activeDeal.original_price_cents;
+                return (
+                  <div className="rounded-xl border-2 border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">⚡</span>
+                      <div>
+                        <p className="text-sm font-bold text-amber-800 dark:text-amber-300">{activeDeal.title}</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          <span className="line-through mr-1">{(original / 100).toLocaleString("es-CL")} {activeDeal.currency}</span>
+                          <span className="font-bold text-emerald-700">{(discounted / 100).toLocaleString("es-CL")} {activeDeal.currency}</span>
+                          {" "}· -{activeDeal.discount_percent}% aplicado
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {selectedService && (
                 <CancellationPolicyBadge
                   hours={selectedService.cancellation_hours}
@@ -863,7 +1000,7 @@ export default function PublicBookPage() {
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {book.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Confirmar reserva
+                  {selectedFlashDealId ? "Reclamar oferta ⚡" : "Confirmar reserva"}
                 </button>
                 <button type="button" onClick={() => setStep(4)} className="rounded-xl border px-4 py-3 text-sm">
                   Volver

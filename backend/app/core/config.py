@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7
     ANTHROPIC_API_KEY: str = ""
-    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
     ALLOW_OPEN_REGISTRATION: bool = False
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "https://revotake.vercel.app", "https://revotake.golinkia.com"]
     # Resend (https://resend.com): si RESEND_API_KEY tiene valor, el envío usa la API y no SMTP.
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     SMTP_FROM_NAME: str = "RevoTake"
     FRONTEND_URL: str = "https://revotake.vercel.app"
     # Base pública de la API (sin barra final), p. ej. https://api.tudominio.com/api/v1 — usada en enlaces del correo de confirmación
-    PUBLIC_API_BASE: str = "http://localhost:8001/api/v1"
+    PUBLIC_API_BASE: str = "http://localhost:8002/api/v1"
     # Horas antes del inicio de la cita para enviar recordatorio y pedir confirmación (override por tienda en settings.agenda.reminder_hours_before)
     MEETING_REMINDER_HOURS_BEFORE: int = 24
     # Intervalo en segundos del worker que busca citas a recordar (también puedes usar POST .../internal/run-meeting-reminders con CRON_SECRET)

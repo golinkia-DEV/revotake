@@ -1,6 +1,7 @@
 import asyncio
 from app.core.database import engine, Base
 from app.models import User, UserRole, StoreType, Store, StoreMember, Product, ProductBranchStock
+from app.models.flash_deal import FlashDeal  # noqa: F401 — registra tabla en metadata
 from app.models.scheduling import (
     Branch,
     Professional,
@@ -895,6 +896,44 @@ async def _backfill_product_branch_stocks():
         await session.commit()
 
 
+async def _migrate_flash_deals():
+    """Tabla flash_deals e índices (ofertas flash con descuento por slot libre)."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    statements = [
+        """CREATE TABLE IF NOT EXISTS flash_deals (
+            id VARCHAR PRIMARY KEY,
+            store_id VARCHAR NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+            branch_id VARCHAR NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+            professional_id VARCHAR NOT NULL REFERENCES professionals(id) ON DELETE CASCADE,
+            service_id VARCHAR NOT NULL REFERENCES scheduling_services(id) ON DELETE CASCADE,
+            discount_percent INTEGER NOT NULL,
+            original_price_cents INTEGER NOT NULL DEFAULT 0,
+            slot_start_time TIMESTAMP NOT NULL,
+            slot_end_time TIMESTAMP NOT NULL,
+            title VARCHAR(200) NOT NULL,
+            description TEXT,
+            expires_at TIMESTAMP NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            appointment_id VARCHAR REFERENCES appointments(id) ON DELETE SET NULL,
+            claimed_at TIMESTAMP,
+            notified_at TIMESTAMP,
+            created_by VARCHAR REFERENCES users(id) ON DELETE SET NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_flash_deals_store_id ON flash_deals(store_id)",
+        "CREATE INDEX IF NOT EXISTS ix_flash_deals_is_active ON flash_deals(is_active)",
+        "CREATE INDEX IF NOT EXISTS ix_flash_deals_slot_start ON flash_deals(slot_start_time)",
+    ]
+    async with engine.begin() as conn:
+        for stmt in statements:
+            try:
+                await conn.execute(text(stmt))
+            except Exception as e:
+                if "already exists" not in str(e):
+                    print(f"Aviso migración flash_deals: {e}")
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -962,6 +1001,10 @@ async def init_db():
         await _backfill_product_branch_stocks()
     except Exception as e:
         print("Aviso backfill product_branch_stocks:", e)
+    try:
+        await _migrate_flash_deals()
+    except Exception as e:
+        print("Aviso migración flash_deals:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:

@@ -1,6 +1,6 @@
 """Procesa cola notification_jobs: email (SMS/WhatsApp con mismo hook)."""
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 async def process_scheduling_notifications(db: AsyncSession, limit: int = 50) -> int:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     r = await db.execute(
         select(NotificationJob)
         .where(NotificationJob.sent_at.is_(None), NotificationJob.scheduled_at <= now)
@@ -186,7 +186,7 @@ async def notify_waitlist_for_slot(
     svc_name = svc.name if svc else "Servicio"
     store_name = store.name if store else ""
     book_url = f"{settings.FRONTEND_URL.rstrip('/')}/book/{store.slug}" if store else ""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     notified = 0
 
     for entry in entries:

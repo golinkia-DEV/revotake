@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -139,7 +139,7 @@ async def professional_invite_preview(token: str, db: AsyncSession = Depends(get
     p = r.scalar_one_or_none()
     if not p or not p.invite_expires_at:
         raise HTTPException(status_code=400, detail="Enlace inválido o expirado")
-    if p.invite_expires_at < datetime.utcnow():
+    if p.invite_expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=400, detail="El enlace expiró. Pedí a la tienda que reenvíe la invitación.")
     if p.user_id:
         raise HTTPException(status_code=400, detail="Esta invitación ya fue utilizada")
@@ -162,7 +162,7 @@ async def professional_invite_accept(data: ProfessionalInviteAccept, db: AsyncSe
     p = r.scalar_one_or_none()
     if not p or not p.invite_expires_at:
         raise HTTPException(status_code=400, detail="Enlace inválido")
-    if p.invite_expires_at < datetime.utcnow():
+    if p.invite_expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=400, detail="El enlace expiró")
     if p.user_id:
         raise HTTPException(status_code=400, detail="Esta invitación ya fue utilizada")

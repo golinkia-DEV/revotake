@@ -1,6 +1,6 @@
 """Sincroniza tickets de atención con la línea de tiempo de la cita."""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +46,7 @@ async def ensure_appointment_session_tickets(db: AsyncSession, limit: int = 80) 
     """
     Crea ticket automático para citas cercanas/en curso cuando aún no existe ficha.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     lookahead = now + timedelta(minutes=20)
     recent_start = now - timedelta(minutes=10)
     q = (
@@ -115,7 +115,7 @@ async def sync_appointment_ticket_workflow(db: AsyncSession, limit: int = 200) -
     - no_response cuando se cancela o no_show
     Solo avanza etapas (no retrocede), para respetar ajustes manuales del equipo.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     q = (
         select(Appointment, Ticket)
         .join(Ticket, Ticket.id == Appointment.ticket_id)

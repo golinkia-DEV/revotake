@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import or_, select
@@ -76,7 +76,7 @@ async def station_time_free(
     end: datetime,
     exclude_appointment_id: str | None = None,
 ) -> bool:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     active = (
         AppointmentStatus.CONFIRMED.value,
         AppointmentStatus.PENDING_PAYMENT.value,
