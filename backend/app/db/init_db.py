@@ -15,6 +15,10 @@ from app.models.scheduling import (
     AppointmentReview,  # noqa: F401 — registra tabla en metadata
 )
 from app.models.client_document import ClientDocument  # noqa: F401 — registro en metadata
+from app.models.public_user import PublicUser  # noqa: F401 — registra tabla en metadata
+from app.models.store_follower import StoreFollower  # noqa: F401 — registra tabla en metadata
+from app.models.store_event import StoreEvent  # noqa: F401 — registra tabla en metadata
+from app.models.event_rsvp import EventRSVP  # noqa: F401 — registra tabla en metadata
 from app.models.store import StoreMemberRole
 from app.core.security import get_password_hash
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -961,6 +965,32 @@ async def _migrate_flash_deal_events():
                     print(f"Aviso migración flash_deal_events: {e}")
 
 
+async def _migrate_public_portal():
+    """Portal público: lat/lng en branches, tablas de seguidores, eventos y RSVP."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    stmts = [
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;",
+        "ALTER TABLE branches ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;",
+        # Índices para búsqueda geoespacial básica
+        "CREATE INDEX IF NOT EXISTS ix_branches_lat_lng ON branches (latitude, longitude);",
+        # store_followers índice compuesto
+        "CREATE INDEX IF NOT EXISTS ix_store_followers_user ON store_followers (public_user_id);",
+        "CREATE INDEX IF NOT EXISTS ix_store_followers_store ON store_followers (store_id);",
+        # store_events
+        "CREATE INDEX IF NOT EXISTS ix_store_events_store_date ON store_events (store_id, event_date);",
+        # event_rsvps
+        "CREATE INDEX IF NOT EXISTS ix_event_rsvps_event ON event_rsvps (event_id);",
+        "CREATE INDEX IF NOT EXISTS ix_event_rsvps_user ON event_rsvps (public_user_id);",
+    ]
+    for sql in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql))
+        except Exception as e:
+            print(f"Aviso migración public_portal ({sql[:50]}…):", e)
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -1036,6 +1066,10 @@ async def init_db():
         await _migrate_flash_deal_events()
     except Exception as e:
         print("Aviso migración flash_deal_events:", e)
+    try:
+        await _migrate_public_portal()
+    except Exception as e:
+        print("Aviso migración public_portal:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:

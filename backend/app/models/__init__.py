@@ -31,3 +31,7 @@ from app.models.scheduling import (
 )
 from app.models.client_document import ClientDocument
 from app.models.supplier import Supplier, ProductSupplier, QuotationRequest
+from app.models.public_user import PublicUser  # noqa: F401
+from app.models.store_follower import StoreFollower  # noqa: F401
+from app.models.store_event import StoreEvent  # noqa: F401
+from app.models.event_rsvp import EventRSVP  # noqa: F401
