@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient, useQueries } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { CheckSquare, Loader2, Plus, UserPlus } from "lucide-react";
+import { CheckSquare, Loader2, Plus, UserPlus, Mail, Phone, MapPin, Calendar, Building2 } from "lucide-react";
 import AppLayout from "@/components/layout/AppLayout";
 import api from "@/lib/api";
 import { getStoreId } from "@/lib/store";
@@ -26,6 +26,32 @@ type ServiceRow = {
 function categoryLabel(c: string | null) {
   const t = (c || "").trim();
   return t || "General";
+}
+
+function Badge({ children, color }: { children: React.ReactNode; color: "emerald" | "amber" | "rose" | "blue" | "slate" | "purple" }) {
+  const c = {
+    emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
+    amber: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+    rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400",
+    blue: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+    slate: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+    purple: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+  }[color];
+  return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${c}`}>{children}</span>;
+}
+
+const inputCls = "w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:border-slate-700 dark:bg-slate-800";
+const labelCls = "block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5";
+
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</p>
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  );
 }
 
 export default function CrearProfesionalPage() {
@@ -212,157 +238,187 @@ export default function CrearProfesionalPage() {
 
   return (
     <AppLayout>
+      {/* Header */}
       <div className="mb-8">
         <p className="mb-1 text-xs font-bold uppercase tracking-widest text-slate-400">Agenda</p>
-        <h1 className="mb-2 flex items-center gap-2 text-2xl font-extrabold tracking-tight sm:text-3xl text-on-surface">
-          <UserPlus className="h-8 w-8 text-primary" />
-          Crear profesional
-        </h1>
-        <p className="max-w-2xl text-sm text-slate-500">
-          Correro y celular son obligatorios. Se envía un <strong>enlace por correo</strong> para que la persona cree su
-          contraseña y acceda como operador. Definí comisión % por cada servicio y, si aplica, un único % para
-          productos de inventario.
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Crear profesional</h1>
+        <p className="mt-1.5 max-w-2xl text-sm text-slate-500">
+          Correo y celular son obligatorios. Se envía un <strong>enlace por correo</strong> para que la persona cree su contraseña y acceda como operador.
         </p>
-        <p className="mt-2 text-sm">
-          <Link href="/scheduling" className="font-semibold text-primary hover:underline">
+        <div className="mt-2 flex gap-3 text-sm">
+          <Link href="/scheduling" className="font-semibold text-blue-600 hover:underline">
             ← Volver a Citas
           </Link>
-          {" · "}
-          <Link href="/equipo" className="font-semibold text-primary hover:underline">
+          <span className="text-slate-300">·</span>
+          <Link href="/equipo" className="font-semibold text-blue-600 hover:underline">
             Equipo y permisos
           </Link>
-        </p>
+        </div>
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white/90 p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
-        {loading ? (
-          <div className="flex items-center gap-2 text-slate-500">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Cargando sedes y servicios…
-          </div>
-        ) : branches.length === 0 ? (
-          <p className="text-sm text-slate-600">
-            Primero creá al menos una sede en{" "}
-            <Link href="/scheduling/sedes" className="font-semibold text-primary hover:underline">
-              Sedes y equipo
-            </Link>
-            .
-          </p>
-        ) : activeServices.length === 0 ? (
-          <p className="text-sm text-slate-600">
-            No hay servicios activos en el menú. Agregá servicios en{" "}
-            <Link href="/scheduling/services" className="font-semibold text-primary hover:underline">
-              Menú de servicios
-            </Link>{" "}
-            y volvé aquí.
-          </p>
-        ) : (
-          <>
-            <div className="mb-6 grid gap-4 md:grid-cols-2">
-              <label className="block text-sm md:col-span-2">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Nombre *</span>
-                <input
-                  className="input-field w-full"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ej. Camila Rojas"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Nombre *</span>
-                <input className="input-field w-full" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Apellido paterno *</span>
-                <input className="input-field w-full" value={paternalLastName} onChange={(e) => setPaternalLastName(e.target.value)} />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Apellido materno *</span>
-                <input className="input-field w-full" value={maternalLastName} onChange={(e) => setMaternalLastName(e.target.value)} />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Fecha nacimiento *</span>
-                <input type="date" className="input-field w-full" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Fecha ingreso *</span>
-                <input type="date" className="input-field w-full" value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
-              </label>
-              <label className="block text-sm md:col-span-2">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Dirección *</span>
-                <input className="input-field w-full" value={address} onChange={(e) => setAddress(e.target.value)} />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Correo electrónico *</span>
-                <input
-                  className="input-field w-full"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="nombre@ejemplo.cl"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">Celular *</span>
-                <input
-                  className="input-field w-full"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+56 9 1234 5678"
-                />
-              </label>
+      {loading ? (
+        <div className="flex items-center gap-2 text-slate-500">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          Cargando sedes y servicios…
+        </div>
+      ) : branches.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-16 text-center dark:border-slate-700">
+          <Building2 className="mb-4 h-12 w-12 text-slate-300" />
+          <p className="font-semibold text-slate-700 dark:text-slate-300">Primero crea una sede</p>
+          <Link href="/scheduling/sedes" className="mt-3 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            Ir a Sedes
+          </Link>
+        </div>
+      ) : activeServices.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-16 text-center dark:border-slate-700">
+          <CheckSquare className="mb-4 h-12 w-12 text-slate-300" />
+          <p className="font-semibold text-slate-700 dark:text-slate-300">No hay servicios activos</p>
+          <Link href="/scheduling/services" className="mt-3 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+            Agregar servicios
+          </Link>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {/* Sección 1: Datos básicos */}
+          <SectionCard title="Datos básicos">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className={labelCls}>Nombre completo (display) *</label>
+                <div className="relative">
+                  <UserPlus className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input className={`${inputCls} pl-10`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Camila Rojas" />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Nombre *</label>
+                <input className={inputCls} value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Apellido paterno *</label>
+                <input className={inputCls} value={paternalLastName} onChange={(e) => setPaternalLastName(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Apellido materno *</label>
+                <input className={inputCls} value={maternalLastName} onChange={(e) => setMaternalLastName(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelCls}>Fecha nacimiento *</label>
+                <div className="relative">
+                  <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input type="date" className={`${inputCls} pl-10`} value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Fecha ingreso *</label>
+                <div className="relative">
+                  <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input type="date" className={`${inputCls} pl-10`} value={hireDate} onChange={(e) => setHireDate(e.target.value)} />
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <label className={labelCls}>Dirección *</label>
+                <div className="relative">
+                  <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input className={`${inputCls} pl-10`} value={address} onChange={(e) => setAddress(e.target.value)} />
+                </div>
+              </div>
             </div>
+          </SectionCard>
 
-            <div className="mb-6">
-              <p className="mb-2 text-sm font-semibold text-on-surface">Sedes donde atiende *</p>
-              <p className="mb-3 text-xs text-slate-500">Al menos una.</p>
-              <div className="flex flex-wrap gap-3">
-                {branches.map((b) => (
-                  <label key={b.id} className="flex cursor-pointer items-center gap-2 text-sm">
+          {/* Sección 2: Contacto */}
+          <SectionCard title="Contacto e invitación">
+            <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2.5 text-xs text-blue-800 dark:bg-blue-900/20 dark:text-blue-300">
+              Se enviará un enlace de invitación al correo para que la persona cree su contraseña.
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className={labelCls}>Correo electrónico *</label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input className={`${inputCls} pl-10`} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nombre@ejemplo.cl" />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Celular *</label>
+                <div className="relative">
+                  <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input className={`${inputCls} pl-10`} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+56 9 1234 5678" />
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Sección 3: Sucursales */}
+          <SectionCard title="Sucursales donde atiende">
+            <p className="mb-3 text-xs text-slate-500">Al menos una sucursal requerida.</p>
+            <div className="flex flex-wrap gap-2">
+              {branches.map((b) => {
+                const checked = branchIds.includes(b.id);
+                return (
+                  <label
+                    key={b.id}
+                    className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                      checked
+                        ? "border-blue-500 bg-blue-50 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900"
+                    } ${!b.is_active ? "opacity-40" : ""}`}
+                  >
                     <input
                       type="checkbox"
-                      className="rounded border-slate-300"
-                      checked={branchIds.includes(b.id)}
+                      className="sr-only"
+                      checked={checked}
                       disabled={!b.is_active}
                       onChange={(e) => setBranchIds((prev) => toggleId(prev, b.id, e.target.checked))}
                     />
-                    <span className={b.is_active ? "" : "text-slate-400 line-through"}>{b.name}</span>
+                    <Building2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className={b.is_active ? "" : "line-through"}>{b.name}</span>
+                    {checked && <span className="h-2 w-2 rounded-full bg-blue-500" />}
                   </label>
-                ))}
-              </div>
+                );
+              })}
             </div>
+          </SectionCard>
 
-            <div className="mb-6 border-t border-slate-100 pt-6 dark:border-slate-800">
-              <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-on-surface">
-                <CheckSquare className="h-4 w-4 text-primary" />
-                Servicios y comisión % (por servicio) *
-              </p>
-              <p className="mb-4 text-xs text-slate-500">Porcentaje entre 0 y 100 sobre el cobro de cada servicio completado.</p>
-              <div className="max-h-[min(52vh,480px)] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
-                {servicesByCategory.map(([cat, rows]) => (
-                  <div key={cat}>
-                    <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">{cat}</p>
-                    <ul className="space-y-3">
-                      {rows.map((s) => (
-                        <li key={s.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-white/80 px-2 py-2 dark:bg-slate-900/50">
-                          <label className="flex min-w-[160px] flex-1 cursor-pointer items-center gap-2 text-sm">
+          {/* Sección 4: Servicios y comisiones */}
+          <SectionCard title="Servicios y comisión % por servicio">
+            <p className="mb-4 text-xs text-slate-500">Porcentaje entre 0 y 100 sobre el cobro de cada servicio completado. Al menos uno requerido.</p>
+            <div className="max-h-[min(52vh,480px)] space-y-5 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+              {servicesByCategory.map(([cat, rows]) => (
+                <div key={cat}>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">{cat}</p>
+                  <ul className="space-y-2">
+                    {rows.map((s) => {
+                      const checked = serviceIds.includes(s.id);
+                      return (
+                        <li
+                          key={s.id}
+                          className={`flex flex-wrap items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${
+                            checked
+                              ? "border-blue-200 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-900/10"
+                              : "border-transparent bg-white dark:bg-slate-900/50"
+                          }`}
+                        >
+                          <label className="flex min-w-[160px] flex-1 cursor-pointer items-center gap-2.5 text-sm">
                             <input
                               type="checkbox"
-                              className="rounded border-slate-300"
-                              checked={serviceIds.includes(s.id)}
+                              className="sr-only"
+                              checked={checked}
                               onChange={(e) => setServiceIds((prev) => toggleId(prev, s.id, e.target.checked))}
                             />
-                            <span className="text-on-surface">{s.name}</span>
+                            <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors ${checked ? "border-blue-600 bg-blue-600" : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800"}`}>
+                              {checked && <span className="text-[10px] font-bold text-white">✓</span>}
+                            </div>
+                            <span className="text-slate-800 dark:text-slate-200">{s.name}</span>
                           </label>
-                          {serviceIds.includes(s.id) && (
-                            <label className="flex items-center gap-2 text-xs text-slate-600">
-                              Comisión %
+                          {checked && (
+                            <label className="flex items-center gap-2 text-xs text-slate-500">
+                              <span className="font-medium">Comisión %</span>
                               <input
                                 type="number"
                                 min={0}
                                 max={100}
                                 step={0.5}
-                                className="w-20 rounded border border-slate-200 px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-950"
+                                className="w-20 rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950"
                                 value={commissionByService[s.id] ?? "0"}
                                 onChange={(e) =>
                                   setCommissionByService((prev) => ({ ...prev, [s.id]: e.target.value }))
@@ -371,44 +427,44 @@ export default function CrearProfesionalPage() {
                             </label>
                           )}
                         </li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
             </div>
+          </SectionCard>
 
-            <div className="mb-6 rounded-xl border border-slate-100 bg-slate-50/80 p-4 dark:border-slate-800">
-              <label className="block text-sm">
-                <span className="mb-1 block font-medium text-slate-700 dark:text-slate-300">
-                  Comisión sobre productos (inventario), único % para todos los productos
-                </span>
-                <span className="mb-2 block text-xs text-slate-500">
-                  Opcional. Dejá vacío si no aplica comisión por ventas de productos para este profesional.
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  className="input-field max-w-xs"
-                  value={productCommission}
-                  onChange={(e) => setProductCommission(e.target.value)}
-                  placeholder="Ej. 5"
-                />
-              </label>
+          {/* Sección 5: Comisión productos */}
+          <SectionCard title="Comisión sobre productos (inventario)">
+            <p className="mb-3 text-xs text-slate-500">
+              Opcional. Único % para todos los productos. Dejá vacío si no aplica.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                className={`${inputCls} max-w-[140px]`}
+                value={productCommission}
+                onChange={(e) => setProductCommission(e.target.value)}
+                placeholder="Ej. 5"
+              />
+              <span className="text-sm text-slate-500">%</span>
             </div>
+          </SectionCard>
 
-            <div className="mb-6 rounded-xl border border-slate-100 bg-slate-50/80 p-4 dark:border-slate-800">
-              <p className="mb-2 text-sm font-semibold text-on-surface">Sillón o sala (ocupación del local)</p>
-              <p className="mb-3 text-xs text-slate-500">
-                <strong>Fijo</strong>: siempre el mismo puesto en cada sede marcada. <strong>Dinámico</strong>: al reservar se elige un puesto libre.{" "}
-                <strong>Sin puesto</strong>: no participa del control de sillones.
-              </p>
-              <label className="mb-3 block text-sm">
-                <span className="mb-1 block text-xs text-slate-500">Modo</span>
+          {/* Sección 6: Sillón / sala */}
+          <SectionCard title="Sillón o sala (ocupación del local)">
+            <p className="mb-3 text-xs text-slate-500">
+              <strong>Fijo</strong>: siempre el mismo puesto. <strong>Dinámico</strong>: al reservar se elige un puesto libre. <strong>Sin puesto</strong>: no participa del control de sillones.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className={labelCls}>Modo</label>
                 <select
-                  className="input-field max-w-md"
+                  className={`${inputCls} max-w-md`}
                   value={stationMode}
                   onChange={(e) => {
                     setStationMode(e.target.value as "none" | "fixed" | "dynamic");
@@ -419,12 +475,12 @@ export default function CrearProfesionalPage() {
                   <option value="fixed">Puesto fijo</option>
                   <option value="dynamic">Dinámico</option>
                 </select>
-              </label>
+              </div>
               {stationMode === "fixed" && (
-                <label className="block text-sm">
-                  <span className="mb-1 block text-xs text-slate-500">Elegí el sillón o sala (de una sede marcada arriba)</span>
+                <div>
+                  <label className={labelCls}>Sillón o sala (de una sede marcada arriba)</label>
                   <select
-                    className="input-field max-w-md"
+                    className={`${inputCls} max-w-md`}
                     value={stationId}
                     onChange={(e) => setStationId(e.target.value)}
                     disabled={branchIds.length === 0}
@@ -439,19 +495,22 @@ export default function CrearProfesionalPage() {
                       );
                     })}
                   </select>
-                </label>
+                </div>
               )}
             </div>
+          </SectionCard>
 
-            <p className="mb-4 text-xs text-amber-800 dark:text-amber-200">
-              Requiere correo configurado en el servidor (Resend o SMTP). Si falla el envío, no se guarda el alta.
-            </p>
+          {/* Submit */}
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+            Requiere correo configurado en el servidor (Resend o SMTP). Si falla el envío, no se guarda el alta.
+          </div>
 
+          <div className="flex justify-end">
             <button
               type="button"
               disabled={!canSubmit}
               onClick={submit}
-              className="btn-primary inline-flex items-center gap-2 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-md shadow-blue-600/25 hover:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {createProfessional.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -460,9 +519,9 @@ export default function CrearProfesionalPage() {
               )}
               Crear e invitar por correo
             </button>
-          </>
-        )}
-      </section>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

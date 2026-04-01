@@ -15,6 +15,7 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-p
 import {
   ChevronDown,
   ChevronRight,
+  Clock,
   GripVertical,
   ImageIcon,
   LayoutGrid,
@@ -727,10 +728,10 @@ function ServiceDraggableCard({
               <button
                 type="button"
                 {...provided.dragHandleProps}
-                className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-slate-600 dark:bg-slate-900 dark:hover:bg-slate-800"
+                className="mt-0.5 flex h-9 w-7 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-slate-600 dark:hover:text-slate-400"
                 aria-label={`Arrastrar para reordenar: ${s.name}`}
               >
-                <GripVertical className="h-5 w-5" aria-hidden />
+                <GripVertical className="h-4 w-4" aria-hidden />
               </button>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold leading-snug text-on-surface">{s.name}</p>
@@ -750,11 +751,12 @@ function ServiceDraggableCard({
             )}
             {s.description && <p className="mb-2 line-clamp-3 text-sm text-slate-600 dark:text-slate-400">{s.description}</p>}
             <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/80 pt-2 dark:border-slate-700">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {s.duration_minutes} min · pos. {index + 1}
-              </p>
+              <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                <Clock className="h-3 w-3" />
+                <span>{s.duration_minutes} min · pos. {index + 1}</span>
+              </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-blue-700 dark:text-blue-400">{formatPrice(s.price_cents, s.currency)}</span>
+                <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatPrice(s.price_cents, s.currency)}</span>
                 <button
                   type="button"
                   onClick={onEdit}
@@ -780,10 +782,10 @@ function ServiceDraggableCard({
               <button
                 type="button"
                 {...provided.dragHandleProps}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-slate-600 dark:hover:bg-slate-800"
+                className="flex h-9 w-7 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-slate-600 dark:hover:text-slate-400"
                 aria-label={`Arrastrar para reordenar: ${s.name}`}
               >
-                <GripVertical className="h-5 w-5" aria-hidden />
+                <GripVertical className="h-4 w-4" aria-hidden />
               </button>
               {s.image_urls?.[0] && (
                 <img
@@ -802,7 +804,7 @@ function ServiceDraggableCard({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-3 pl-14 sm:pl-0">
-              <span className="text-sm font-bold text-blue-700 dark:text-blue-400">{formatPrice(s.price_cents, s.currency)}</span>
+              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatPrice(s.price_cents, s.currency)}</span>
               <button
                 type="button"
                 onClick={onEdit}
@@ -823,39 +825,67 @@ function ServiceStaticCard({ service: s, onEdit }: { service: ServiceRow; onEdit
   return (
     <div
       className={clsx(
-        "flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50/50 p-3 shadow-sm dark:border-slate-700 dark:bg-slate-950/50",
+        "flex h-full flex-col rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900",
         !s.is_active && "opacity-90 ring-1 ring-amber-200/80 dark:ring-amber-900/50"
       )}
     >
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <p className="font-semibold leading-snug text-on-surface">{s.name}</p>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-600 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:hover:bg-slate-800"
-          aria-label={`Editar ${s.name}`}
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-      </div>
-      {!s.is_active && (
-        <span className="mb-2 inline-block w-fit rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900 dark:bg-amber-950 dark:text-amber-100">
-          Inactivo · archivo
-        </span>
-      )}
-      {s.image_urls?.[0] && (
+      {/* Image placeholder or real image */}
+      {s.image_urls?.[0] ? (
         <img
           src={fileUrl(s.image_urls[0])}
           alt=""
-          className="mb-2 h-28 w-full rounded-xl object-cover ring-1 ring-slate-200 dark:ring-slate-700"
+          className="h-32 w-full rounded-t-2xl object-cover"
         />
+      ) : (
+        <div className="flex h-24 w-full items-center justify-center rounded-t-2xl bg-gradient-to-br from-slate-100 to-slate-50 dark:from-slate-800 dark:to-slate-900">
+          <ImageIcon className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+        </div>
       )}
-      {s.description && <p className="mb-2 line-clamp-3 text-sm text-slate-600 dark:text-slate-400">{s.description}</p>}
-      <div className="mt-auto border-t border-slate-200/80 pt-2 dark:border-slate-700">
-        <p className="text-xs text-slate-500">
-          {s.duration_minutes} min · orden {s.menu_sort_order}
-        </p>
-        <p className="text-sm font-bold text-blue-700 dark:text-blue-400">{formatPrice(s.price_cents, s.currency)}</p>
+
+      <div className="flex flex-1 flex-col p-3">
+        <div className="mb-1.5 flex items-start justify-between gap-2">
+          <p className="font-semibold leading-snug text-slate-900 dark:text-white">{s.name}</p>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 opacity-0 hover:bg-slate-100 hover:text-slate-700 hover:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 group-hover:opacity-100 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            aria-label={`Editar ${s.name}`}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        {!s.is_active && (
+          <span className="mb-2 inline-block w-fit rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+            Inactivo · archivo
+          </span>
+        )}
+
+        {s.category && (
+          <span className="mb-1.5 inline-block w-fit rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+            {s.category}
+          </span>
+        )}
+
+        {s.description && <p className="mb-2 line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{s.description}</p>}
+
+        <div className="mt-auto flex items-center justify-between gap-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <Clock className="h-3 w-3" />
+            <span>{s.duration_minutes} min</span>
+          </div>
+          <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
+            {formatPrice(s.price_cents, s.currency)}
+          </span>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:hover:bg-slate-800"
+            aria-label={`Editar ${s.name}`}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -865,38 +895,52 @@ function ServiceStaticRow({ service: s, onEdit }: { service: ServiceRow; onEdit:
   return (
     <div
       className={clsx(
-        "flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between",
-        !s.is_active && "bg-amber-50/40 dark:bg-amber-950/15"
+        "flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50/60 dark:hover:bg-slate-800/30",
+        !s.is_active && "bg-amber-50/30 dark:bg-amber-950/10"
       )}
     >
+      {/* Image or placeholder */}
+      {s.image_urls?.[0] ? (
+        <img
+          src={fileUrl(s.image_urls[0])}
+          alt=""
+          className="h-12 w-12 shrink-0 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-slate-700"
+        />
+      ) : (
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800">
+          <ImageIcon className="h-5 w-5 text-slate-400 dark:text-slate-500" />
+        </div>
+      )}
+
       <div className="min-w-0 flex-1">
-        <div className="flex items-start gap-3">
-          {s.image_urls?.[0] && (
-            <img
-              src={fileUrl(s.image_urls[0])}
-              alt=""
-              className="h-14 w-14 shrink-0 rounded-lg object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-            />
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-semibold text-slate-900 dark:text-white">{s.name}</p>
+          {s.category && (
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+              {s.category}
+            </span>
           )}
-          <div className="min-w-0">
-            <p className="font-semibold text-on-surface">{s.name}</p>
-            {s.description && <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{s.description}</p>}
-            <p className="mt-1 text-xs text-slate-500">
-              {s.duration_minutes} min · orden {s.menu_sort_order}
-              {!s.is_active ? " · inactivo (archivo)" : ""}
-            </p>
-          </div>
+          {!s.is_active && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              inactivo
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 flex items-center gap-3 text-xs text-slate-500">
+          <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{s.duration_minutes} min</span>
+          {s.description && <span className="hidden truncate sm:inline max-w-[200px]">{s.description}</span>}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
-        <span className="text-sm font-bold text-blue-700 dark:text-blue-400">{formatPrice(s.price_cents, s.currency)}</span>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatPrice(s.price_cents, s.currency)}</span>
         <button
           type="button"
           onClick={onEdit}
-          className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:hover:bg-slate-800"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:border-slate-700 dark:hover:bg-slate-800"
           aria-label={`Editar ${s.name}`}
         >
-          <Pencil className="h-4 w-4" />
+          <Pencil className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
@@ -942,8 +986,8 @@ function DockServiceRow({
           >
             <p className="truncate text-sm font-semibold text-on-surface">{s.name}</p>
             <p className="truncate text-xs text-slate-500">
-              {formatPrice(s.price_cents, s.currency)} · {s.duration_minutes} min
-              {!s.is_active ? " · inactivo" : ""}
+              <span className="font-semibold text-emerald-700 dark:text-emerald-400">{formatPrice(s.price_cents, s.currency)}</span>
+              {" · "}{s.duration_minutes} min{!s.is_active ? " · inactivo" : ""}
             </p>
           </button>
         </div>
