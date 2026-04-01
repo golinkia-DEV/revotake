@@ -18,6 +18,7 @@ import {
   Loader2,
   Sparkles,
   Users,
+  FileText,
 } from "lucide-react";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
@@ -184,6 +185,8 @@ export default function ClientsPage() {
   }, [search]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [showAiImport, setShowAiImport] = useState(false);
+  const [aiImportText, setAiImportText] = useState("");
 
   const { data } = useQuery({
     queryKey: ["clients", debouncedSearch],
@@ -322,6 +325,20 @@ export default function ClientsPage() {
     onError: () => toast.error("No se pudo guardar la nota"),
   });
 
+  const aiImport = useMutation({
+    mutationFn: (text: string) => api.post<{ created: number; skipped: number }>("/clients/import-ai", { raw_text: text }).then((r) => r.data),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["clients"] });
+      setShowAiImport(false);
+      setAiImportText("");
+      toast.success(`Importados ${res.created} clientes${res.skipped > 0 ? `, ${res.skipped} omitidos` : ""}`);
+    },
+    onError: (e: unknown) => {
+      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Error al importar";
+      toast.error(msg);
+    },
+  });
+
   const isPending = create.isPending || update.isPending;
 
   useEffect(() => {
@@ -347,7 +364,7 @@ export default function ClientsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 self-start">
-          <button type="button" className="flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-300 dark:hover:bg-purple-900/50">
+          <button type="button" onClick={() => setShowAiImport(true)} className="flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-2 text-sm font-semibold text-purple-700 hover:bg-purple-100 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-300 dark:hover:bg-purple-900/50">
             <Sparkles className="h-4 w-4" /> Importar con IA
           </button>
           <button
@@ -806,6 +823,63 @@ export default function ClientsPage() {
                     </>
                   )}
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* AI Import Modal */}
+      <AnimatePresence>
+        {showAiImport && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) { setShowAiImport(false); setAiImportText(""); } }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <div className="mb-4 flex items-start justify-between">
+                <div>
+                  <h2 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white">
+                    <Sparkles className="h-5 w-5 text-purple-600" /> Importar clientes con IA
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">Pega texto desde Excel, CSV o una lista. La IA detectará los datos automáticamente.</p>
+                </div>
+                <button type="button" onClick={() => { setShowAiImport(false); setAiImportText(""); }} className="ml-3 shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mb-2 flex items-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-700 dark:border-purple-900/40 dark:bg-purple-950/20 dark:text-purple-300">
+                <FileText className="h-4 w-4 shrink-0" />
+                <span>Ejemplo: copia celdas desde Excel con columnas nombre, email, teléfono, dirección, etc.</span>
+              </div>
+              <textarea
+                value={aiImportText}
+                onChange={(e) => setAiImportText(e.target.value)}
+                rows={8}
+                placeholder={"Nombre\tEmail\tTeléfono\nJuana García\tjuana@mail.com\t+56 9 1234 5678\nPedro López\tpedro@mail.com\t"}
+                className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 font-mono text-xs focus:border-transparent focus:ring-2 focus:ring-purple-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => { setShowAiImport(false); setAiImportText(""); }} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!aiImportText.trim() || aiImport.isPending}
+                  onClick={() => aiImport.mutate(aiImportText)}
+                  className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {aiImport.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                  {aiImport.isPending ? "Procesando…" : "Importar"}
+                </button>
               </div>
             </motion.div>
           </motion.div>
