@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import {
@@ -427,7 +427,20 @@ export default function PublicBookPage() {
   });
   const flashDealItems: FlashDealPublic[] = flashDeals.data?.items ?? [];
 
+  useEffect(() => {
+    if (!slug || flashDealItems.length === 0) return;
+    const k = `revotake_flash_section_${slug}`;
+    if (typeof sessionStorage !== "undefined") {
+      if (sessionStorage.getItem(k)) return;
+      sessionStorage.setItem(k, "1");
+    }
+    publicApi.post(`/public/scheduling/${slug}/flash-deals/track`, { event: "section_view" }).catch(() => {});
+  }, [slug, flashDealItems.length]);
+
   function applyFlashDeal(deal: FlashDealPublic) {
+    publicApi
+      .post(`/public/scheduling/${slug}/flash-deals/track`, { event: "apply_click", deal_id: deal.id })
+      .catch(() => {});
     setServiceId(deal.service_id);
     setBranchId(deal.branch_id);
     setProfessionalId(deal.professional_id);

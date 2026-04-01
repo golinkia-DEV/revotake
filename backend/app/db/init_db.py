@@ -2,6 +2,7 @@ import asyncio
 from app.core.database import engine, Base
 from app.models import User, UserRole, StoreType, Store, StoreMember, Product, ProductBranchStock
 from app.models.flash_deal import FlashDeal  # noqa: F401 — registra tabla en metadata
+from app.models.flash_deal_event import FlashDealEvent  # noqa: F401 — registra tabla en metadata
 from app.models.scheduling import (
     Branch,
     Professional,
@@ -934,6 +935,32 @@ async def _migrate_flash_deals():
                     print(f"Aviso migración flash_deals: {e}")
 
 
+async def _migrate_flash_deal_events():
+    """Eventos de analítica de ofertas flash (vista de bloque, clic, reserva)."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    statements = [
+        """CREATE TABLE IF NOT EXISTS flash_deal_events (
+            id VARCHAR PRIMARY KEY,
+            store_id VARCHAR NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+            deal_id VARCHAR REFERENCES flash_deals(id) ON DELETE CASCADE,
+            event_type VARCHAR(32) NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS ix_flash_deal_events_store_id ON flash_deal_events(store_id)",
+        "CREATE INDEX IF NOT EXISTS ix_flash_deal_events_deal_id ON flash_deal_events(deal_id)",
+        "CREATE INDEX IF NOT EXISTS ix_flash_deal_events_store_created ON flash_deal_events(store_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_flash_deal_events_type ON flash_deal_events(event_type)",
+    ]
+    async with engine.begin() as conn:
+        for stmt in statements:
+            try:
+                await conn.execute(text(stmt))
+            except Exception as e:
+                if "already exists" not in str(e):
+                    print(f"Aviso migración flash_deal_events: {e}")
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -1005,6 +1032,10 @@ async def init_db():
         await _migrate_flash_deals()
     except Exception as e:
         print("Aviso migración flash_deals:", e)
+    try:
+        await _migrate_flash_deal_events()
+    except Exception as e:
+        print("Aviso migración flash_deal_events:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:

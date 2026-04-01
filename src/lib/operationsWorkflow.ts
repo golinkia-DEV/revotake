@@ -299,6 +299,37 @@ export interface OperationsSettings {
   wizard_version?: number;
 }
 
+/** Operaciones persistidas como tras elegir plantilla en el asistente de alta (columnas = defaults del preset). */
+export function buildDefaultOperationsSettings(
+  presetId: WorkflowPresetId,
+  workflowNotes: string
+): OperationsSettings {
+  const p = presetById(presetId);
+  const col_labels: Record<string, string> = {};
+  const col_descs: Record<string, string> = {};
+  const col_icons: Record<string, string> = {};
+  const col_colors: Record<string, string> = {};
+  const col_vis: Record<string, boolean> = {};
+  for (const id of KANBAN_COLUMN_ORDER) {
+    const c = p.columns[id];
+    col_labels[id] = c.label;
+    col_descs[id] = c.description;
+    col_icons[id] = c.icon;
+    col_colors[id] = c.color;
+    col_vis[id] = c.visible ?? true;
+  }
+  return {
+    preset: presetId,
+    workflow_notes: workflowNotes,
+    column_labels: col_labels,
+    column_descriptions: col_descs,
+    column_icons: col_icons,
+    column_colors: col_colors,
+    column_visible: col_vis,
+    wizard_version: 2,
+  };
+}
+
 export function getKanbanColumns(settings: { operations?: OperationsSettings } | null | undefined): {
   id: KanbanColumnId;
   label: string;

@@ -12,7 +12,21 @@ import {
   XCircle,
   Plus,
   BarChart3,
+  MousePointerClick,
+  Eye,
+  Banknote,
+  TrendingDown,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  Legend,
+} from "recharts";
 import { toast } from "sonner";
 import api from "@/lib/api";
 import AppLayout from "@/components/layout/AppLayout";
@@ -52,6 +66,24 @@ type FlashDealStats = {
   revenue_lost_to_deals_cents: number;
 };
 
+type FlashDealAnalytics = {
+  period_days: number;
+  since: string;
+  summary: {
+    section_views: number;
+    apply_clicks: number;
+    claims: number;
+    revenue_discounted_cents: number;
+    revenue_list_original_cents: number;
+    discount_given_cents: number;
+    ctr_apply_per_section: number | null;
+    conversion_claim_per_apply: number | null;
+    conversion_claim_per_section: number | null;
+  };
+  funnel: { stage: string; key: string; count: number }[];
+  daily: { date: string; section_view: number; apply_click: number; claim: number }[];
+};
+
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
 function fmtCLP(cents: number) {
@@ -63,6 +95,17 @@ function fmtCLP(cents: number) {
 function fmtDatetime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtShortDate(isoDate: string) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  if (!y || !m || !d) return isoDate;
+  return new Date(y, m - 1, d).toLocaleDateString("es-CL", { day: "numeric", month: "short" });
+}
+
+function pctLabel(v: number | null | undefined) {
+  if (v == null) return "—";
+  return `${v}%`;
 }
 
 function relTime(iso: string) {
@@ -421,6 +464,7 @@ function DealCard({ deal, onCancel }: { deal: FlashDeal; onCancel: (id: string) 
 
 export default function FlashDealsPage() {
   const [showModal, setShowModal] = useState(false);
+  const [analyticsDays, setAnalyticsDays] = useState(30);
   const queryClient = useQueryClient();
 
   const { data: deals = [], isLoading } = useQuery<FlashDeal[]>({
@@ -435,12 +479,19 @@ export default function FlashDealsPage() {
     refetchInterval: 30_000,
   });
 
+  const { data: analytics } = useQuery<FlashDealAnalytics>({
+    queryKey: ["flash-deals-analytics", analyticsDays],
+    queryFn: () => api.get("/scheduling/flash-deals/analytics", { params: { days: analyticsDays } }).then((r) => r.data),
+    refetchInterval: 60_000,
+  });
+
   const cancelMutation = useMutation({
     mutationFn: (dealId: string) => api.put(`/scheduling/flash-deals/${dealId}/cancel`).then((r) => r.data),
     onSuccess: () => {
       toast.success("Oferta cancelada");
       queryClient.invalidateQueries({ queryKey: ["flash-deals"] });
       queryClient.invalidateQueries({ queryKey: ["flash-deals-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["flash-deals-analytics"] });
     },
     onError: (e: unknown) => {
       const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Error al cancelar";
@@ -451,6 +502,7 @@ export default function FlashDealsPage() {
   function handleInvalidate() {
     queryClient.invalidateQueries({ queryKey: ["flash-deals"] });
     queryClient.invalidateQueries({ queryKey: ["flash-deals-stats"] });
+    queryClient.invalidateQueries({ queryKey: ["flash-deals-analytics"] });
   }
 
   const activeDeals = deals.filter((d) => d.is_active && !d.is_claimed && new Date(d.expires_at) > new Date());
@@ -458,7 +510,7 @@ export default function FlashDealsPage() {
 
   return (
     <AppLayout>
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-6xl">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -499,6 +551,138 @@ export default function FlashDealsPage() {
               <p className="text-lg font-bold text-purple-700 dark:text-purple-400">{fmtCLP(stats.revenue_lost_to_deals_cents)}</p>
             </div>
           </div>
+        )}
+
+        {/* Panel analítica (reserva pública) */}
+        {analytics && (
+          <section className="mb-10 rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-50/80 to-white p-5 shadow-sm dark:border-slate-800 dark:from-slate-900/50 dark:to-slate-900 sm:p-6">
+            <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100">
+                  <BarChart3 className="h-5 w-5 text-amber-500" />
+                  Trazabilidad en la reserva pública
+                </h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Embudo desde que alguien ve el bloque de ofertas hasta la reserva cerrada. Los conteos son eventos (no personas únicas).
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-1 rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-800">
+                {([7, 30, 90] as const).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setAnalyticsDays(d)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      analyticsDays === d
+                        ? "bg-amber-500 text-white"
+                        : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {d} días
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950/40">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <Eye className="h-3.5 w-3.5 text-amber-500" />
+                  Vistas del bloque
+                </div>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{analytics.summary.section_views}</p>
+                <p className="mt-1 text-[11px] text-slate-400">Carga de la sección Ofertas Flash (1 por sesión de navegador)</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950/40">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <MousePointerClick className="h-3.5 w-3.5 text-blue-500" />
+                  Clic «Tomar oferta»
+                </div>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{analytics.summary.apply_clicks}</p>
+                <p className="mt-1 text-[11px] text-slate-400">CTR desde bloque: {pctLabel(analytics.summary.ctr_apply_per_section)}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950/40">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                  Reservas con oferta
+                </div>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{analytics.summary.claims}</p>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Clic → reserva: {pctLabel(analytics.summary.conversion_claim_per_apply)} · Bloque → reserva:{" "}
+                  {pctLabel(analytics.summary.conversion_claim_per_section)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950/40">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <Banknote className="h-3.5 w-3.5 text-emerald-600" />
+                  Ingreso (precio oferta)
+                </div>
+                <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
+                  {fmtCLP(analytics.summary.revenue_discounted_cents)}
+                </p>
+                <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
+                  <TrendingDown className="h-3 w-3 shrink-0" />
+                  Descuento otorgado: {fmtCLP(analytics.summary.discount_given_cents)} · Lista:{" "}
+                  {fmtCLP(analytics.summary.revenue_list_original_cents)}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950/40">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Actividad por día</p>
+                <div className="h-[260px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={analytics.daily} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-slate-200 dark:stroke-slate-700" />
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={fmtShortDate}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={36} />
+                      <RechartsTooltip
+                        labelFormatter={(l) => fmtShortDate(String(l))}
+                        contentStyle={{ borderRadius: 12, border: "1px solid #e2e8f0" }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar dataKey="section_view" name="Vistas bloque" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="apply_click" name="Clic oferta" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                      <Bar dataKey="claim" name="Reservas" fill="#10b981" radius={[2, 2, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-950/40">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Embudo</p>
+                <div className="space-y-4">
+                  {(() => {
+                    const max = Math.max(1, ...analytics.funnel.map((f) => f.count));
+                    const colors = ["#f59e0b", "#3b82f6", "#10b981"];
+                    return analytics.funnel.map((f, i) => (
+                      <div key={f.key}>
+                        <div className="mb-1 flex justify-between text-sm">
+                          <span className="font-medium text-slate-700 dark:text-slate-200">{f.stage}</span>
+                          <span className="tabular-nums text-slate-500">{f.count}</span>
+                        </div>
+                        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${Math.min(100, Math.round((100 * f.count) / max))}%`,
+                              backgroundColor: colors[i] ?? "#94a3b8",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ));
+                  })()}
+                </div>
+              </div>
+            </div>
+          </section>
         )}
 
         {/* Ofertas activas */}

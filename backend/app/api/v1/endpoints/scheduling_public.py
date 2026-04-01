@@ -1,9 +1,9 @@
 """Reserva pública por slug de tienda (sin JWT)."""
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -574,6 +574,50 @@ async def public_flash_deals(store_slug: str, db: AsyncSession = Depends(get_db)
     return {"items": result}
 
 
+class FlashDealTrackIn(BaseModel):
+    """Telemetría pública del embudo de ofertas flash (sin identificar usuarios)."""
+
+    event: Literal["section_view", "apply_click"]
+    deal_id: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_event(self):
+        if self.event == "apply_click" and not self.deal_id:
+            raise ValueError("apply_click requiere deal_id")
+        if self.event == "section_view" and self.deal_id:
+            raise ValueError("section_view no debe incluir deal_id")
+        return self
+
+
+@router.post("/{store_slug}/flash-deals/track")
+async def track_flash_deal_event(
+    store_slug: str,
+    body: FlashDealTrackIn,
+    db: AsyncSession = Depends(get_db),
+):
+    """Registra vista del bloque de ofertas o clic en «Tomar oferta» (trazabilidad / panel)."""
+    from app.models.flash_deal import FlashDeal
+    from app.models.flash_deal_event import FlashDealEvent
+
+    store = await _store_by_slug(db, store_slug)
+    deal_id = None
+
+    if body.event == "apply_click":
+        deal = await db.get(FlashDeal, body.deal_id)
+        if not deal or deal.store_id != store.id:
+            raise HTTPException(404, "Oferta no encontrada")
+        deal_id = deal.id
+
+    ev = FlashDealEvent(
+        store_id=store.id,
+        deal_id=deal_id,
+        event_type=body.event,
+    )
+    db.add(ev)
+    await db.commit()
+    return {"ok": True}
+
+
 @router.post("/{store_slug}/flash-deals/{deal_id}/claim")
 async def claim_flash_deal(
     store_slug: str,
@@ -630,6 +674,16 @@ async def claim_flash_deal(
     # Marcar deal como reclamada
     deal.appointment_id = appt.id
     deal.claimed_at = now
+
+    from app.models.flash_deal_event import FlashDealEvent
+
+    db.add(
+        FlashDealEvent(
+            store_id=store.id,
+            deal_id=deal.id,
+            event_type="claim",
+        )
+    )
 
     await db.commit()
     await db.refresh(deal)

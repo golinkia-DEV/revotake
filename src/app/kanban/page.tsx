@@ -254,7 +254,16 @@ export default function KanbanPage() {
     enabled: !!storeId,
   });
 
-  const isAdmin = meData?.store_context?.member_role === "admin";
+  const sc = meData?.store_context;
+  const normalized = sc?.member_role_normalized;
+  const rawRole = sc?.member_role;
+  const isStoreAdmin =
+    normalized === "store_admin" ||
+    normalized === "branch_admin" ||
+    rawRole === "admin" ||
+    rawRole === "store_admin" ||
+    rawRole === "seller" ||
+    rawRole === "branch_admin";
   const columns = getKanbanColumns(store?.settings);
   const allColumns = getKanbanColumns({ ...store?.settings, operations: { ...store?.settings?.operations, column_visible: undefined } });
   const ops = store?.settings?.operations as { preset?: string; workflow_notes?: string } | undefined;
@@ -328,7 +337,7 @@ export default function KanbanPage() {
           </button>
 
           {/* Workflow designer (admin only) */}
-          {isAdmin && (
+          {isStoreAdmin && (
             <Link href="/operations/workflow"
               className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-950/50">
               <Workflow className="h-4 w-4" /> Disenar flujo

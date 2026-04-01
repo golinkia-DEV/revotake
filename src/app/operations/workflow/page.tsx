@@ -435,9 +435,11 @@ export default function WorkflowDesignerPage() {
         wizard_version: 2,
       };
 
-      return api.patch(`/stores/${storeId}`, {
-        settings: { ...storeData?.settings, operations: opsSettings },
-      });
+      return api.patch(
+        `/stores/${storeId}`,
+        { settings: { ...storeData?.settings, operations: opsSettings } },
+        { headers: { "X-Store-Id": storeId! } }
+      );
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["store", storeId] });

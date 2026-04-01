@@ -3,12 +3,20 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ImageIcon, Loader2, Save, Sparkles, ToggleLeft, ToggleRight } from "lucide-react";
+import { ImageIcon, Info, Loader2, Save, Sparkles, ToggleLeft, ToggleRight, Workflow } from "lucide-react";
+import Link from "next/link";
+import clsx from "clsx";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { getUser } from "@/lib/auth";
 import { fileUrl } from "@/lib/files";
-import { WORKFLOW_PRESETS, type WorkflowPresetId } from "@/lib/operationsWorkflow";
+import {
+  WORKFLOW_PRESETS,
+  WIZARD_HELP_TEXT,
+  buildDefaultOperationsSettings,
+  type OperationsSettings,
+  type WorkflowPresetId,
+} from "@/lib/operationsWorkflow";
 import { emptyStoreProfile, mergeStoreProfileFromApi, type StoreProfile } from "@/lib/storeProfile";
 import { FiscalChileStep, LocationAndHoursStep, AmenitiesStep } from "@/components/store/StoreProfileWizardSections";
 
@@ -75,6 +83,21 @@ export function StoreSettingsEditor({ storeId, activeTab }: { storeId: string; a
     mutationFn: async () => {
       if (!storeData) return;
       const base = { ...storeData.settings };
+      const prevOps = (base.operations as OperationsSettings) || {};
+      const serverPreset: WorkflowPresetId =
+        typeof prevOps.preset === "string" && WORKFLOW_PRESETS.some((x) => x.id === prevOps.preset)
+          ? (prevOps.preset as WorkflowPresetId)
+          : "generic";
+      const presetUnchanged = serverPreset === workflowPreset;
+      const operations: OperationsSettings = presetUnchanged
+        ? {
+            ...prevOps,
+            preset: workflowPreset,
+            workflow_notes: workflowNotes.trim(),
+            wizard_version: prevOps.wizard_version ?? 2,
+          }
+        : buildDefaultOperationsSettings(workflowPreset, workflowNotes.trim());
+
       await api.patch(
         `/stores/${storeId}`,
         {
@@ -82,11 +105,7 @@ export function StoreSettingsEditor({ storeId, activeTab }: { storeId: string; a
           settings: {
             ...base,
             store_profile: profileConfig,
-            operations: {
-              ...((base.operations as object) || {}),
-              preset: workflowPreset,
-              workflow_notes: workflowNotes.trim(),
-            },
+            operations,
             ai: {
               ...((base.ai as Record<string, unknown>) || {}),
               business_context: businessCtx.slice(0, CONTEXT_CHAR_LIMIT),
@@ -249,25 +268,48 @@ export function StoreSettingsEditor({ storeId, activeTab }: { storeId: string; a
 
           <div className="glass-card p-6">
             <h2 className="mb-2 text-sm font-semibold text-on-surface">Operaciones (tablero de tickets)</h2>
-            <p className="mb-3 text-xs text-slate-500">Plantilla del Kanban: renombra columnas para tu equipo sin cambiar la lógica interna.</p>
-            <select
-              value={workflowPreset}
-              onChange={(e) => setWorkflowPreset(e.target.value as WorkflowPresetId)}
-              className="input-field mb-3 max-w-lg"
-            >
+            <p className="mb-3 text-xs text-slate-500">
+              Misma elección que al crear la tienda: plantilla y nota. Para renombrar columnas, colores e íconos usá el diseñador de flujo.
+            </p>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
               {WORKFLOW_PRESETS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setWorkflowPreset(p.id)}
+                  className={clsx(
+                    "rounded-2xl border p-4 text-left transition-all",
+                    workflowPreset === p.id
+                      ? "border-primary bg-primary/5 ring-2 ring-primary/30"
+                      : "border-slate-200 hover:border-slate-300 dark:border-slate-700 dark:hover:border-slate-600"
+                  )}
+                >
+                  <span className="font-semibold text-on-surface">{p.title}</span>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{p.description}</p>
+                </button>
               ))}
-            </select>
-            <label className="mb-1 block text-xs text-slate-500">Nota sobre tu proceso (opcional)</label>
+            </div>
+            <label className="mb-1 block text-xs text-slate-500">¿Cómo es tu flujo en una frase? (opcional)</label>
             <textarea
               value={workflowNotes}
               onChange={(e) => setWorkflowNotes(e.target.value)}
-              className="input-field min-h-[80px]"
-              placeholder="Ej.: Primero tomamos el dato por WhatsApp…"
+              className="input-field mb-4 min-h-[80px]"
+              placeholder="Ej.: Primero tomamos el dato por WhatsApp, luego agendamos visita y cerramos con presupuesto."
             />
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-slate-500" />
+              <div>
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{WIZARD_HELP_TEXT.title}</p>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{WIZARD_HELP_TEXT.body}</p>
+              </div>
+            </div>
+            <Link
+              href="/operations/workflow"
+              className="mt-4 inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-950/50"
+            >
+              <Workflow className="h-4 w-4" />
+              Diseñar flujo (columnas y vista previa)
+            </Link>
           </div>
 
           <div className="glass-card p-6">

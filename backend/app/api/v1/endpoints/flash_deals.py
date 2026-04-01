@@ -4,15 +4,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, cast, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import StoreContext, require_store_admin, require_store_permission
+from app.core.deps import StoreContext, require_store_permission
 from app.core.permissions import VER_AGENDA_TIENDA, CREAR_CITA
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 from app.models.flash_deal import FlashDeal
+from app.models.flash_deal_event import FlashDealEvent
 from app.models.scheduling import Branch, Professional, Service, ProfessionalService, ProfessionalBranch
 from app.services.scheduling_availability import compute_slots
 
@@ -291,4 +292,107 @@ async def flash_deals_stats(
         "total_claimed": total_claimed,
         "total_expired": total_expired,
         "revenue_lost_to_deals_cents": revenue_lost,
+    }
+
+
+@router.get("/flash-deals/analytics")
+async def flash_deals_analytics(
+    days: int = Query(30, ge=1, le=366),
+    ctx: StoreContext = Depends(require_store_permission(VER_AGENDA_TIENDA, CREAR_CITA)),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Panel tipo BI: embudo (vista bloque → clic en oferta → reserva), serie diaria e ingresos
+    por reservas con oferta en el período (precio promocional cobrado / descuento otorgado).
+    """
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    since = now - timedelta(days=days)
+
+    type_counts_r = await db.execute(
+        select(FlashDealEvent.event_type, func.count(FlashDealEvent.id))
+        .where(FlashDealEvent.store_id == ctx.store_id, FlashDealEvent.created_at >= since)
+        .group_by(FlashDealEvent.event_type)
+    )
+    by_type = {row[0]: int(row[1]) for row in type_counts_r.all()}
+    section_views = by_type.get("section_view", 0)
+    apply_clicks = by_type.get("apply_click", 0)
+    claims = by_type.get("claim", 0)
+
+    day_col = cast(FlashDealEvent.created_at, Date)
+    daily_r = await db.execute(
+        select(day_col, FlashDealEvent.event_type, func.count(FlashDealEvent.id))
+        .where(FlashDealEvent.store_id == ctx.store_id, FlashDealEvent.created_at >= since)
+        .group_by(day_col, FlashDealEvent.event_type)
+        .order_by(day_col)
+    )
+    daily_map: dict[str, dict[str, int]] = {}
+    for d, ev_type, cnt in daily_r.all():
+        key = d.isoformat() if hasattr(d, "isoformat") else str(d)
+        if key not in daily_map:
+            daily_map[key] = {"section_view": 0, "apply_click": 0, "claim": 0}
+        if ev_type in daily_map[key]:
+            daily_map[key][ev_type] = int(cnt)
+
+    # Rellenar días sin eventos (eje X continuo)
+    daily_series = []
+    start_d = since.date()
+    end_d = now.date()
+    cur = start_d
+    while cur <= end_d:
+        ks = cur.isoformat()
+        row = daily_map.get(ks, {"section_view": 0, "apply_click": 0, "claim": 0})
+        daily_series.append(
+            {
+                "date": ks,
+                "section_view": row["section_view"],
+                "apply_click": row["apply_click"],
+                "claim": row["claim"],
+            }
+        )
+        cur = cur + timedelta(days=1)
+
+    claimed_in_period_r = await db.execute(
+        select(FlashDeal).where(
+            FlashDeal.store_id == ctx.store_id,
+            FlashDeal.appointment_id.isnot(None),
+            FlashDeal.claimed_at.isnot(None),
+            FlashDeal.claimed_at >= since,
+        )
+    )
+    claimed_deals = claimed_in_period_r.scalars().all()
+    revenue_discounted_cents = 0
+    revenue_list_original_cents = 0
+    discount_given_cents = 0
+    for d in claimed_deals:
+        disc = int(d.original_price_cents * d.discount_percent / 100)
+        pay = max(0, d.original_price_cents - disc)
+        revenue_discounted_cents += pay
+        revenue_list_original_cents += d.original_price_cents
+        discount_given_cents += disc
+
+    def _pct(num: int, den: int) -> float | None:
+        if den <= 0:
+            return None
+        return round(100.0 * num / den, 1)
+
+    return {
+        "period_days": days,
+        "since": since.isoformat(),
+        "summary": {
+            "section_views": section_views,
+            "apply_clicks": apply_clicks,
+            "claims": claims,
+            "revenue_discounted_cents": revenue_discounted_cents,
+            "revenue_list_original_cents": revenue_list_original_cents,
+            "discount_given_cents": discount_given_cents,
+            "ctr_apply_per_section": _pct(apply_clicks, section_views),
+            "conversion_claim_per_apply": _pct(claims, apply_clicks),
+            "conversion_claim_per_section": _pct(claims, section_views),
+        },
+        "funnel": [
+            {"stage": "Vistas del bloque", "key": "section_view", "count": section_views},
+            {"stage": 'Clic "Tomar oferta"', "key": "apply_click", "count": apply_clicks},
+            {"stage": "Reservas con oferta", "key": "claim", "count": claims},
+        ],
+        "daily": daily_series,
     }
