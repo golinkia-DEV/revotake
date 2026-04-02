@@ -31,10 +31,6 @@ const config: Config = {
           500: "#2e2e46",
         },
         warning: "#d97706",
-        "on-tertiary-fixed-variant": "#2f2ebe",
-        "on-tertiary": "#ffffff",
-        "inverse-on-surface": "#eff1f3",
-        "surface-variant": "#e0e3e5",
         // v2 — violet/amber/rose premium palette
         primary: "#7C3AED",
         "primary-dark": "#6D28D9",
