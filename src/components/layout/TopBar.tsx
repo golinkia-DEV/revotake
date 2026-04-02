@@ -137,9 +137,9 @@ export default function TopBar({
 
         {/* Store name — desktop */}
         {storeName && (
-          <div className="hidden items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 md:flex dark:border-slate-700 dark:bg-slate-800">
-            <MaterialIcon name="storefront" className="text-base text-blue-600" />
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{storeName}</span>
+          <div className="hidden items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 md:flex dark:border-violet-800/40 dark:bg-violet-950/30">
+            <MaterialIcon name="storefront" className="text-base text-violet-600 dark:text-violet-400" />
+            <span className="text-xs font-semibold text-violet-800 dark:text-violet-300">{storeName}</span>
           </div>
         )}
       </div>
@@ -191,7 +191,7 @@ export default function TopBar({
         {me?.global_role === "platform_admin" && (
           <Link
             href="/dashboard"
-            className="hidden items-center gap-1 rounded-full bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 sm:inline-flex"
+            className="hidden items-center gap-1 rounded-full bg-gradient-to-br from-violet-600 to-violet-800 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-violet-500/20 hover:from-violet-700 hover:to-violet-900 sm:inline-flex"
           >
             <MaterialIcon name="dashboard" className="text-base" filled />
             Panel general
@@ -203,7 +203,7 @@ export default function TopBar({
           <button
             type="button"
             onClick={() => setShowNotif((v) => !v)}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-blue-600"
+            className="relative flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-950/30"
             aria-label="Notificaciones"
           >
             <Bell className="h-5 w-5" />
@@ -301,7 +301,7 @@ export default function TopBar({
             className="hidden items-center gap-2 rounded-full pl-1 pr-2 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 sm:flex"
             aria-label="Menú de usuario"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow-sm">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-rose-500 text-xs font-bold text-white shadow-sm shadow-violet-500/25">
               {getInitials(userName, userEmail)}
             </div>
             <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
@@ -317,7 +317,7 @@ export default function TopBar({
               >
                 <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-rose-500 text-sm font-bold text-white shadow-sm shadow-violet-500/25">
                       {getInitials(userName, userEmail)}
                     </div>
                     <div className="min-w-0">

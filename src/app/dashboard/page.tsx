@@ -40,8 +40,8 @@ function StatCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      whileHover={{ y: -3, transition: { duration: 0.15 } }}
-      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      whileHover={{ y: -4, transition: { duration: 0.15 } }}
+      className={`rounded-2xl border border-slate-100 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 border-t-[3px] ${colorClass.replace("text-", "border-t-").replace("-600", "-500").replace("-400", "-400")}`}
     >
       <div className="mb-4 flex items-start justify-between">
         <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${bgClass}`}>
@@ -49,9 +49,9 @@ function StatCard({
         </div>
       </div>
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1">{label}</p>
-      <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">{value ?? "—"}</p>
+      <p className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white font-headline">{value ?? "—"}</p>
       {href && (
-        <Link href={href} className="mt-3 flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400">
+        <Link href={href} className="mt-3 flex items-center gap-1 text-xs font-semibold text-violet-600 hover:underline dark:text-violet-400">
           Ver detalles <ArrowRight className="h-3 w-3" />
         </Link>
       )}
@@ -97,7 +97,7 @@ export default function DashboardPage() {
       <section className="mb-8">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400 mb-1">Dashboard</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400 mb-1">Dashboard</p>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
               {greeting}, {firstName}
             </h1>
@@ -116,8 +116,8 @@ export default function DashboardPage() {
           label="Clientes totales"
           value={stats?.total_clients}
           icon={Users}
-          colorClass="text-blue-600 dark:text-blue-400"
-          bgClass="bg-blue-100 dark:bg-blue-900/30"
+          colorClass="text-violet-600 dark:text-violet-400"
+          bgClass="bg-violet-100 dark:bg-violet-900/30"
           href="/clients"
           delay={0}
         />
@@ -125,8 +125,8 @@ export default function DashboardPage() {
           label="Tickets abiertos"
           value={stats?.open_tickets}
           icon={Activity}
-          colorClass="text-purple-600 dark:text-purple-400"
-          bgClass="bg-purple-100 dark:bg-purple-900/30"
+          colorClass="text-amber-600 dark:text-amber-400"
+          bgClass="bg-amber-100 dark:bg-amber-900/30"
           href="/kanban"
           delay={0.05}
         />
@@ -153,7 +153,7 @@ export default function DashboardPage() {
       {/* Agenda hoy */}
       {storeId && (
         <section className="mb-8">
-          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">Hoy</p>
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">Hoy</p>
           <DashboardAgendaHubToday />
         </section>
       )}
@@ -163,7 +163,7 @@ export default function DashboardPage() {
         {/* Actividad reciente — empty state elegante */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-4 flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <TrendingUp className="h-5 w-5 text-violet-600 dark:text-violet-400" />
             <h2 className="font-bold text-slate-900 dark:text-white">Actividad reciente</h2>
           </div>
           <div className="flex flex-col items-center justify-center py-8 text-center">
@@ -178,7 +178,7 @@ export default function DashboardPage() {
         {/* Agenda y citas */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
           <div className="mb-4 flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <Calendar className="h-5 w-5 text-violet-600 dark:text-violet-400" />
             <h2 className="font-bold text-slate-900 dark:text-white">Agenda y citas</h2>
           </div>
           <div className="flex flex-col items-center justify-center py-4 text-center">
@@ -201,9 +201,9 @@ export default function DashboardPage() {
       <section className="border-t border-slate-200 pt-8 dark:border-slate-800">
         <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="mb-1 text-xs font-bold uppercase tracking-widest text-blue-600 dark:text-blue-400">Visualizaciones</p>
+            <p className="mb-1 text-xs font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">Visualizaciones</p>
             <h2 className="flex items-center gap-2 text-xl font-extrabold text-slate-900 dark:text-white">
-              <BarChart3 className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <BarChart3 className="h-6 w-6 text-violet-600 dark:text-violet-400" />
               Gráficos del panel
             </h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -244,9 +244,9 @@ export default function DashboardPage() {
                   <YAxis tick={{ fontSize: 12 }} />
                   <ReTooltip />
                   <Legend />
-                  <Bar dataKey="citas" name="Citas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="ingresos" name="Ingresos (miles CLP)" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="fijas" name="Clientas fijas" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="citas" name="Citas" fill="#7C3AED" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="ingresos" name="Ingresos (miles CLP)" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="fijas" name="Clientas fijas" fill="#EC4899" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

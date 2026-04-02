@@ -57,8 +57,18 @@ def _store_location(store: Store) -> dict:
 
 @router.get("/categories")
 async def list_categories(db: AsyncSession = Depends(get_db)):
-    """Lista todos los tipos de tienda disponibles."""
-    r = await db.execute(select(StoreType).order_by(StoreType.name))
+    """Lista tipos de tienda que tienen al menos una tienda activa."""
+    subq = (
+        select(Store.store_type_id)
+        .where(Store.is_active.is_(True), Store.store_type_id.isnot(None))
+        .distinct()
+        .scalar_subquery()
+    )
+    r = await db.execute(
+        select(StoreType)
+        .where(StoreType.id.in_(subq))
+        .order_by(StoreType.name)
+    )
     types = r.scalars().all()
     return [
         {
@@ -80,6 +90,8 @@ async def discover_stores(
     pet_friendly: Optional[bool] = Query(None),
     delivery: Optional[bool] = Query(None),
     search: Optional[str] = Query(None),
+    min_rating: Optional[float] = Query(None, ge=1.0, le=5.0, description="Calificación mínima"),
+    has_deals: Optional[bool] = Query(None, description="Solo tiendas con flash deals activos"),
     sort: str = Query("rating", enum=["rating", "distance", "deals"]),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -94,7 +106,14 @@ async def discover_stores(
     if category_slug:
         q = q.where(StoreType.slug == category_slug)
     if search:
-        q = q.where(Store.name.ilike(f"%{search}%"))
+        # Búsqueda full-text con websearch_to_tsquery (soporta sintaxis Lucene:
+        # AND, OR, -negación, "frases exactas"). Fallback a ilike si la query
+        # genera un error de sintaxis (e.g. query vacía o solo operadores).
+        fts_vector = func.to_tsvector("spanish", func.coalesce(Store.name, ""))
+        fts_query = func.websearch_to_tsquery("spanish", search)
+        fts_cond = fts_vector.op("@@")(fts_query)
+        # OR ilike para capturar prefijos / términos cortos sin espacios
+        q = q.where(fts_cond | Store.name.ilike(f"%{search}%"))
 
     r = await db.execute(q)
     rows = r.all()
@@ -109,6 +128,30 @@ async def discover_stores(
         if pet_friendly is not None and is_pet != pet_friendly:
             continue
         if delivery is not None and is_delivery != delivery:
+            continue
+
+        # Rating promedio (calculado aquí para usarlo también como filtro)
+        rating_r = await db.execute(
+            select(func.avg(AppointmentReview.rating), func.count(AppointmentReview.id))
+            .where(AppointmentReview.store_id == store.id)
+        )
+        avg_rating, rating_count = rating_r.one()
+
+        if min_rating is not None:
+            if avg_rating is None or float(avg_rating) < min_rating:
+                continue
+
+        # Flash deals activos
+        deals_r = await db.execute(
+            select(func.count(FlashDeal.id)).where(
+                FlashDeal.store_id == store.id,
+                FlashDeal.is_active.is_(True),
+                FlashDeal.expires_at > now_naive,
+            )
+        )
+        flash_deals_count = deals_r.scalar() or 0
+
+        if has_deals is True and flash_deals_count == 0:
             continue
 
         # Coordenadas de la primera rama activa con lat/lng
@@ -136,23 +179,6 @@ async def discover_stores(
         elif lat is not None and lng is not None and not (branch_lat and branch_lng):
             # Tienda sin coords: incluir siempre si no hay filtro de distancia estricto
             pass
-
-        # Rating promedio
-        rating_r = await db.execute(
-            select(func.avg(AppointmentReview.rating), func.count(AppointmentReview.id))
-            .where(AppointmentReview.store_id == store.id)
-        )
-        avg_rating, rating_count = rating_r.one()
-
-        # Flash deals activos
-        deals_r = await db.execute(
-            select(func.count(FlashDeal.id)).where(
-                FlashDeal.store_id == store.id,
-                FlashDeal.is_active.is_(True),
-                FlashDeal.expires_at > now_naive,
-            )
-        )
-        flash_deals_count = deals_r.scalar() or 0
 
         loc = _store_location(store)
         loc["lat"] = branch_lat

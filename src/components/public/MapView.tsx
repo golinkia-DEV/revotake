@@ -10,116 +10,154 @@ interface Props {
   userLocation: { lat: number; lng: number } | null;
 }
 
-// Leaflet se carga dinámicamente para evitar errores de SSR
+declare global {
+  interface Window {
+    google: typeof google;
+    _gmapsLoaded?: boolean;
+    _gmapsCallbacks?: Array<() => void>;
+  }
+}
+
+function loadGoogleMaps(apiKey: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (window._gmapsLoaded) {
+      resolve();
+      return;
+    }
+    if (window._gmapsCallbacks) {
+      window._gmapsCallbacks.push(resolve);
+      return;
+    }
+    window._gmapsCallbacks = [resolve];
+    (window as any)._onGMapsLoad = () => {
+      window._gmapsLoaded = true;
+      window._gmapsCallbacks?.forEach((cb) => cb());
+      window._gmapsCallbacks = [];
+    };
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=_onGMapsLoad&loading=async`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+  });
+}
+
 export default function MapView({ stores, highlightedSlug, onMarkerClick, userLocation }: Props) {
-  const mapRef = useRef<any>(null);
-  const markersRef = useRef<Record<string, any>>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<Record<string, google.maps.Marker>>({});
+  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !containerRef.current) return;
 
-    // Importar Leaflet solo en cliente
-    import("leaflet").then((L) => {
-      // Ícono por defecto corregido (Next.js rompe los paths por defecto)
-      const DefaultIcon = L.icon({
-        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
-      });
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY ?? "";
+    if (!apiKey || apiKey === "your_google_maps_api_key_here") {
+      containerRef.current.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#9ca3af;font-size:13px">Google Maps API key no configurada</div>';
+      return;
+    }
 
-      const HighlightIcon = L.icon({
-        iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png",
-        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41],
-      });
+    loadGoogleMaps(apiKey).then(() => {
+      if (!containerRef.current) return;
+
+      const center = userLocation
+        ? { lat: userLocation.lat, lng: userLocation.lng }
+        : { lat: -33.4569, lng: -70.6483 }; // Santiago por defecto
 
       // Inicializar mapa solo una vez
       if (!mapRef.current) {
-        const center: [number, number] = userLocation
-          ? [userLocation.lat, userLocation.lng]
-          : [-33.4569, -70.6483]; // Santiago por defecto
-
-        mapRef.current = L.map(containerRef.current!, {
+        mapRef.current = new google.maps.Map(containerRef.current, {
           center,
           zoom: 12,
-          zoomControl: true,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+          styles: [
+            { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+          ],
         });
-
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-          maxZoom: 19,
-        }).addTo(mapRef.current);
+        infoWindowRef.current = new google.maps.InfoWindow();
 
         // Marcador de usuario
         if (userLocation) {
-          const userIcon = L.divIcon({
-            className: "",
-            html: `<div style="width:14px;height:14px;background:#6d28d9;border:2px solid white;border-radius:50%;box-shadow:0 2px 4px rgba(0,0,0,0.3)"></div>`,
-            iconSize: [14, 14],
-            iconAnchor: [7, 7],
+          new google.maps.Marker({
+            position: userLocation,
+            map: mapRef.current,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              fillColor: "#6d28d9",
+              fillOpacity: 1,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+              scale: 8,
+            },
+            title: "Tu ubicación",
+            zIndex: 999,
           });
-          L.marker([userLocation.lat, userLocation.lng], { icon: userIcon })
-            .addTo(mapRef.current)
-            .bindPopup("Tu ubicación");
         }
       }
 
       const map = mapRef.current;
 
       // Limpiar marcadores anteriores
-      Object.values(markersRef.current).forEach((m: any) => m.remove());
+      Object.values(markersRef.current).forEach((m) => m.setMap(null));
       markersRef.current = {};
 
-      // Agregar marcadores de tiendas
+      const bounds = new google.maps.LatLngBounds();
+      let hasCoords = false;
+
       stores.forEach((store) => {
         const { lat, lng } = store.location;
         if (!lat || !lng) return;
 
         const isHL = store.slug === highlightedSlug;
-        const icon = isHL ? HighlightIcon : DefaultIcon;
-        const marker = L.marker([lat, lng], { icon })
-          .addTo(map)
-          .bindPopup(
-            `<div style="min-width:140px">
+        const position = { lat, lng };
+
+        const marker = new google.maps.Marker({
+          position,
+          map,
+          title: store.name,
+          icon: {
+            url: isHL
+              ? "https://maps.google.com/mapfiles/ms/icons/purple-dot.png"
+              : "https://maps.google.com/mapfiles/ms/icons/red-dot.png",
+            scaledSize: new google.maps.Size(isHL ? 40 : 32, isHL ? 40 : 32),
+          },
+          zIndex: isHL ? 100 : 1,
+          animation: isHL ? google.maps.Animation.BOUNCE : undefined,
+        });
+
+        marker.addListener("click", () => {
+          onMarkerClick(store.slug);
+          infoWindowRef.current?.setContent(
+            `<div style="min-width:150px;padding:4px 0">
               <strong style="font-size:13px">${store.name}</strong>
               ${store.store_type ? `<br><span style="color:#7c3aed;font-size:11px">${store.store_type.name}</span>` : ""}
               ${store.rating_avg ? `<br><span style="font-size:12px">⭐ ${store.rating_avg.toFixed(1)} (${store.rating_count})</span>` : ""}
               <br><a href="/tienda/${store.slug}" style="color:#7c3aed;font-size:12px;font-weight:600">Ver tienda →</a>
-            </div>`,
-            { maxWidth: 200 }
+            </div>`
           );
+          infoWindowRef.current?.open(map, marker);
+        });
 
-        marker.on("click", () => onMarkerClick(store.slug));
         markersRef.current[store.slug] = marker;
+        bounds.extend(position);
+        hasCoords = true;
       });
 
-      // Actualizar ícono del marcador destacado
+      // Centrar el mapa en los resultados si hay tiendas con coords
+      if (hasCoords && stores.length > 1) {
+        map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
+      }
+
+      // Abrir popup del destacado
       if (highlightedSlug && markersRef.current[highlightedSlug]) {
-        markersRef.current[highlightedSlug].setIcon(HighlightIcon);
-        markersRef.current[highlightedSlug].openPopup();
+        const m = markersRef.current[highlightedSlug];
+        m.setAnimation(google.maps.Animation.BOUNCE);
+        google.maps.event.trigger(m, "click");
       }
     });
-
-    // Agregar CSS de Leaflet
-    if (!document.getElementById("leaflet-css")) {
-      const link = document.createElement("link");
-      link.id = "leaflet-css";
-      link.rel = "stylesheet";
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      document.head.appendChild(link);
-    }
-
-    return () => {
-      // No destruir el mapa al re-render para evitar parpadeos
-    };
   }, [stores, highlightedSlug, userLocation, onMarkerClick]);
 
   return (

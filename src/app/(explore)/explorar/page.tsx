@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Search, PawPrint, Truck, SlidersHorizontal, X } from "lucide-react";
+import { MapPin, Search, PawPrint, Truck, SlidersHorizontal, X, Star, Tag } from "lucide-react";
 import publicApi from "@/lib/publicApi";
 import StoreCard, { type StoreCardData } from "@/components/public/StoreCard";
 import dynamic from "next/dynamic";
@@ -21,6 +21,8 @@ export default function ExplorarPage() {
   const [categorySlug, setCategorySlug] = useState<string | null>(null);
   const [petFriendly, setPetFriendly] = useState(false);
   const [delivery, setDelivery] = useState(false);
+  const [hasDeals, setHasDeals] = useState(false);
+  const [minRating, setMinRating] = useState<number | null>(null);
   const [sort, setSort] = useState<"rating" | "distance" | "deals">("rating");
   const [highlightedSlug, setHighlightedSlug] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -51,6 +53,8 @@ export default function ExplorarPage() {
   if (categorySlug) params.category_slug = categorySlug;
   if (petFriendly) params.pet_friendly = true;
   if (delivery) params.delivery = true;
+  if (hasDeals) params.has_deals = true;
+  if (minRating) params.min_rating = minRating;
   if (userLocation) {
     params.lat = userLocation.lat;
     params.lng = userLocation.lng;
@@ -58,7 +62,7 @@ export default function ExplorarPage() {
   }
 
   const { data: storesData, isLoading } = useQuery({
-    queryKey: ["pub-stores", search, categorySlug, petFriendly, delivery, sort, userLocation],
+    queryKey: ["pub-stores", search, categorySlug, petFriendly, delivery, hasDeals, minRating, sort, userLocation],
     queryFn: () => publicApi.get("/public/explore/stores", { params }).then((r) => r.data),
     staleTime: 60_000,
   });
@@ -74,7 +78,7 @@ export default function ExplorarPage() {
     }
   }, []);
 
-  const activeFilters = [petFriendly, delivery, !!categorySlug].filter(Boolean).length;
+  const activeFilters = [petFriendly, delivery, hasDeals, !!categorySlug, !!minRating].filter(Boolean).length;
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)]">
@@ -162,6 +166,31 @@ export default function ExplorarPage() {
               <Truck className="w-3.5 h-3.5" />
               A domicilio
             </button>
+            <button
+              onClick={() => setHasDeals(!hasDeals)}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                hasDeals
+                  ? "bg-orange-50 border-orange-400 text-orange-700"
+                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <Tag className="w-3.5 h-3.5" />
+              Con ofertas
+            </button>
+            <select
+              value={minRating ?? ""}
+              onChange={(e) => setMinRating(e.target.value ? Number(e.target.value) : null)}
+              className={`px-3 py-1.5 border rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-violet-300 ${
+                minRating
+                  ? "border-yellow-400 bg-yellow-50 text-yellow-700"
+                  : "border-gray-200 text-gray-600"
+              }`}
+            >
+              <option value="">Cualquier rating</option>
+              <option value="3">3+ estrellas</option>
+              <option value="4">4+ estrellas</option>
+              <option value="4.5">4.5+ estrellas</option>
+            </select>
             {userLocation && (
               <button
                 onClick={() => setSort("distance")}
@@ -189,6 +218,8 @@ export default function ExplorarPage() {
                 onClick={() => {
                   setPetFriendly(false);
                   setDelivery(false);
+                  setHasDeals(false);
+                  setMinRating(null);
                   setCategorySlug(null);
                   setSort("rating");
                 }}
