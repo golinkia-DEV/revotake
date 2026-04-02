@@ -158,7 +158,7 @@ export default function TiendaPage({ params }: { params: Promise<{ slug: string 
             </div>
             <div className="flex-1 min-w-0">
               <h1 className="text-xl font-bold text-gray-900">{meta?.name}</h1>
-              {storeRating && storeRating.count > 0 && (
+              {storeRating && storeRating.count > 0 && storeRating.avg != null && (
                 <div className="mt-1">
                   <StarRating value={storeRating.avg} count={storeRating.count} />
                 </div>

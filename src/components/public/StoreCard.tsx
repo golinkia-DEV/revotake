@@ -107,7 +107,7 @@ export default function StoreCard({ store, isHighlighted, onHover }: Props) {
             </div>
 
             {/* Rating */}
-            {store.rating_avg !== null && (
+            {store.rating_avg != null && (
               <div className="flex items-center gap-1 mt-1">
                 <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
                 <span className="text-sm font-semibold text-gray-800">
