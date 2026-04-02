@@ -12,7 +12,8 @@ interface Props {
 
 declare global {
   interface Window {
-    google: typeof google;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    google: any;
     _gmapsLoaded?: boolean;
     _gmapsCallbacks?: Array<() => void>;
   }
