@@ -191,11 +191,11 @@ export default function SchedulingPanelPage() {
               <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-on-surface">
                 <Wrench className="h-5 w-5 text-primary" /> Citas en curso
               </h2>
-              {panel.active_sessions.length === 0 ? (
+              {(panel.active_sessions ?? []).length === 0 ? (
                 <p className="text-sm text-slate-500">No hay citas confirmadas en este momento.</p>
               ) : (
                 <ul className="space-y-3">
-                  {panel.active_sessions.map((s) => (
+                  {(panel.active_sessions ?? []).map((s) => (
                     <li key={s.appointment_id} className="rounded-xl border border-slate-200 bg-white/80 p-3 dark:border-slate-700 dark:bg-slate-900/40">
                       <p className="font-semibold text-on-surface">
                         {s.client_name} — {s.service_name}
@@ -234,11 +234,11 @@ export default function SchedulingPanelPage() {
               <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-on-surface">
                 <Users className="h-5 w-5 text-primary" /> Clientes recurrentes (90 días)
               </h2>
-              {panel.repeat_clients.length === 0 ? (
+              {(panel.repeat_clients ?? []).length === 0 ? (
                 <p className="text-sm text-slate-500">Aún no hay clientes con 2+ visitas en el período.</p>
               ) : (
                 <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
-                  {panel.repeat_clients.map((c) => (
+                  {(panel.repeat_clients ?? []).map((c) => (
                     <li key={c.client_id} className="flex justify-between rounded-lg border border-slate-100 px-3 py-2 dark:border-slate-800">
                       <Link href={`/clients`} className="font-medium text-primary hover:underline">
                         {c.name}
@@ -257,7 +257,7 @@ export default function SchedulingPanelPage() {
               <p className="mb-3 text-xs text-slate-500">Ordenado por ingresos en citas completadas (usa monto cobrado si existe; si no, precio del servicio).</p>
               {/* Cards en mobile, tabla en desktop */}
               <div className="space-y-2 md:hidden">
-                {panel.staff.map((row) => (
+                {(panel.staff ?? []).map((row) => (
                   <div key={row.professional_id} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2.5 dark:border-slate-800">
                     <span className="font-medium text-sm text-on-surface">{row.name}</span>
                     <div className="text-right text-xs text-slate-500">
@@ -277,7 +277,7 @@ export default function SchedulingPanelPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {panel.staff.map((row) => (
+                    {(panel.staff ?? []).map((row) => (
                       <tr key={row.professional_id} className="border-b border-slate-100 dark:border-slate-800">
                         <td className="py-2 pr-2 font-medium">{row.name}</td>
                         <td className="py-2 pr-2">{row.appointments_count_90d}</td>
@@ -293,7 +293,7 @@ export default function SchedulingPanelPage() {
               <h2 className="mb-3 text-lg font-bold text-on-surface">Servicios / atenciones (más vendidos)</h2>
               <p className="mb-3 text-xs text-slate-500">Solo citas completadas. Vinculá cada servicio a un producto en la API o futura UI de servicios.</p>
               <div className="space-y-2 md:hidden">
-                {panel.services_by_revenue.map((row) => (
+                {(panel.services_by_revenue ?? []).map((row) => (
                   <div key={row.service_id} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-2.5 dark:border-slate-800">
                     <span className="font-medium text-sm text-on-surface">{row.name}</span>
                     <div className="text-right text-xs text-slate-500">
@@ -313,7 +313,7 @@ export default function SchedulingPanelPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {panel.services_by_revenue.map((row) => (
+                    {(panel.services_by_revenue ?? []).map((row) => (
                       <tr key={row.service_id} className="border-b border-slate-100 dark:border-slate-800">
                         <td className="py-2 pr-2 font-medium">{row.name}</td>
                         <td className="py-2 pr-2">{row.completed_count}</td>

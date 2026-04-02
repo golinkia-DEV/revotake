@@ -732,14 +732,14 @@ export default function ClientsPage() {
 
                       {/* Actividad */}
                       <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">Actividad</p>
-                      {activityData.events.length === 0 ? (
+                      {(activityData.events ?? []).length === 0 ? (
                         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 py-10 text-center dark:border-slate-700">
                           <User className="mb-2 h-8 w-8 text-slate-300 dark:text-slate-600" />
                           <p className="text-sm text-slate-500">Sin reservas, compras ni registros aún</p>
                         </div>
                       ) : (
                         <ul className="space-y-3">
-                          {activityData.events.map((ev) => (
+                          {(activityData.events ?? []).map((ev) => (
                             <li
                               key={`${ev.kind}-${ev.id}`}
                               className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-800/60"

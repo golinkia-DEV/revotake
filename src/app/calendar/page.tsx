@@ -684,7 +684,7 @@ export default function CalendarPage() {
                     <h2 className="text-lg font-bold text-on-surface">Más citas hoy</h2>
                   </div>
                   <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                    {hub.appointments_rest_today.map((a) => (
+                    {(hub.appointments_rest_today ?? []).map((a) => (
                       <div key={a.id} className="rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
                         <p className="font-semibold text-on-surface">{a.service_name || "Servicio"}</p>
                         <p className="mt-1 text-xs text-slate-500">{fmtRange(a.start_time, a.end_time)}</p>
