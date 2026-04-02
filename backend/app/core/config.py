@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     # Intervalo en segundos del worker que busca citas a recordar (también puedes usar POST .../internal/run-meeting-reminders con CRON_SECRET)
     MEETING_REMINDER_INTERVAL_SEC: int = 300
     CRON_SECRET: str = ""
+    GOOGLE_CLIENT_ID: str = ""
     # Directorio para logos y fotos de servicios (persistir en volumen en producción)
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_IMAGE_MB: int = 5

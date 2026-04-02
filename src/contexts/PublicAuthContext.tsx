@@ -17,6 +17,7 @@ interface PublicAuthState {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, phone: string, password: string) => Promise<void>;
+  googleLogin: (accessToken: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -25,6 +26,7 @@ const PublicAuthContext = createContext<PublicAuthState>({
   isLoading: true,
   login: async () => {},
   register: async () => {},
+  googleLogin: async () => {},
   logout: () => {},
 });
 
@@ -57,13 +59,19 @@ export function PublicAuthProvider({ children }: { children: React.ReactNode }) 
     setUser(res.data.user);
   };
 
+  const googleLogin = async (accessToken: string) => {
+    const res = await publicApi.post("/public/user/google", { access_token: accessToken });
+    setPublicToken(res.data.access_token);
+    setUser(res.data.user);
+  };
+
   const logout = () => {
     removePublicToken();
     setUser(null);
   };
 
   return (
-    <PublicAuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <PublicAuthContext.Provider value={{ user, isLoading, login, register, googleLogin, logout }}>
       {children}
     </PublicAuthContext.Provider>
   );

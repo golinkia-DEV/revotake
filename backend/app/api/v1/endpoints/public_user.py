@@ -2,13 +2,15 @@
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Header
 from jose import JWTError
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.security import get_password_hash, verify_password, create_access_token, decode_token
 from app.models.public_user import PublicUser
 from app.models.store_follower import StoreFollower
@@ -31,7 +33,26 @@ class RegisterIn(BaseModel):
     name: str = Field(..., min_length=2, max_length=200)
     email: EmailStr
     phone: Optional[str] = None
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8, max_length=128)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("El nombre no puede estar vacío")
+        return v.strip()
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, v: Optional[str]) -> Optional[str]:
+        if not v:
+            return None
+        cleaned = v.strip()
+        return cleaned if cleaned else None
+
+
+class GoogleAuthIn(BaseModel):
+    access_token: str
 
 
 class LoginIn(BaseModel):
@@ -123,6 +144,62 @@ async def login(body: LoginIn, db: AsyncSession = Depends(get_db)):
     user = r.scalar_one_or_none()
     if not user or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "Credenciales incorrectas")
+    return {"access_token": _make_public_token(user.id), "token_type": "bearer", "user": _user_out(user)}
+
+
+@router.post("/google", status_code=200)
+async def google_login(body: GoogleAuthIn, db: AsyncSession = Depends(get_db)):
+    """Login / registro con Google para usuarios del portal público."""
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="Google login no está configurado")
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {body.access_token}"},
+            timeout=10,
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Token de Google inválido")
+
+    info = resp.json()
+    google_id = info.get("sub")
+    email = (info.get("email") or "").strip().lower()
+    name = (info.get("name") or email.split("@")[0]).strip()
+    avatar_url = info.get("picture") or None
+
+    if not google_id or not email:
+        raise HTTPException(status_code=400, detail="Token de Google no contiene los datos necesarios")
+
+    # Buscar por google_id primero, luego por email
+    r = await db.execute(select(PublicUser).where(PublicUser.google_id == google_id))
+    user = r.scalar_one_or_none()
+
+    if not user:
+        r = await db.execute(select(PublicUser).where(PublicUser.email == email))
+        user = r.scalar_one_or_none()
+        if user:
+            user.google_id = google_id
+            if not user.avatar_url and avatar_url:
+                user.avatar_url = avatar_url
+        else:
+            user = PublicUser(
+                name=name,
+                email=email,
+                phone=None,
+                password_hash=None,
+                google_id=google_id,
+                avatar_url=avatar_url,
+            )
+            db.add(user)
+            await db.flush()
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Usuario inactivo")
+
+    await db.commit()
+    await db.refresh(user)
     return {"access_token": _make_public_token(user.id), "token_type": "bearer", "user": _user_out(user)}
 
 

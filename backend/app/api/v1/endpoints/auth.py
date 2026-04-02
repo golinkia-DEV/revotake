@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,9 @@ from app.core.config import settings
 
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+class GoogleAuthRequest(BaseModel):
+    credential: str  # Google access_token from the frontend (implicit flow)
 
 class UserCreate(BaseModel):
     email: str
@@ -86,6 +90,77 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
     user = User(email=data.email, name=data.name, hashed_password=get_password_hash(data.password), role=data.role)
     db.add(user)
     return {"message": "User created", "id": user.id}
+
+
+@router.post("/google", response_model=Token)
+async def google_login(data: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
+    """Verifica un ID token de Google y devuelve JWT de RevoTake."""
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="Google login no está configurado")
+
+    # Verify access_token by calling Google's userinfo endpoint
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {data.credential}"},
+            timeout=10,
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Token de Google inválido")
+
+    info = resp.json()
+
+    google_id = info.get("sub")
+    email = (info.get("email") or "").strip().lower()
+    name = info.get("name") or email.split("@")[0]
+
+    if not google_id or not email:
+        raise HTTPException(status_code=400, detail="Token de Google no contiene email o sub")
+
+    # Look up by google_id first, then by email
+    result = await db.execute(select(User).where(User.google_id == google_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        result = await db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        if user:
+            # Link existing account to Google
+            user.google_id = google_id
+        else:
+            # Create new user
+            user = User(
+                email=email,
+                name=name,
+                hashed_password=None,
+                google_id=google_id,
+                role=UserRole.SELLER,
+            )
+            db.add(user)
+            await db.flush()
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Usuario inactivo")
+
+    token = create_access_token(
+        {
+            "sub": user.id,
+            "role": user.role.value,
+            "global_role": normalize_global_role(user.role),
+        }
+    )
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role.value,
+            "global_role": normalize_global_role(user.role),
+        },
+    }
 
 
 @router.get("/me")

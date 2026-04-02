@@ -991,6 +991,26 @@ async def _migrate_public_portal():
             print(f"Aviso migración public_portal ({sql[:50]}…):", e)
 
 
+async def _migrate_google_auth():
+    """Agrega google_id a users/public_users y hace password nullable."""
+    if "postgresql" not in settings.DATABASE_URL:
+        return
+    stmts = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(128);",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id) WHERE google_id IS NOT NULL;",
+        "ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL;",
+        "ALTER TABLE public_users ADD COLUMN IF NOT EXISTS google_id VARCHAR(128);",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_public_users_google_id ON public_users (google_id) WHERE google_id IS NOT NULL;",
+        "ALTER TABLE public_users ALTER COLUMN password_hash DROP NOT NULL;",
+    ]
+    for sql in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(sql))
+        except Exception as e:
+            print(f"Aviso migración google_auth ({sql[:60]}…):", e)
+
+
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -1070,6 +1090,10 @@ async def init_db():
         await _migrate_public_portal()
     except Exception as e:
         print("Aviso migración public_portal:", e)
+    try:
+        await _migrate_google_auth()
+    except Exception as e:
+        print("Aviso migración google_auth:", e)
 
     AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with AsyncSessionLocal() as session:
