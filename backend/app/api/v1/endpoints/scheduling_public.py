@@ -60,12 +60,23 @@ async def public_meta(store_slug: str, db: AsyncSession = Depends(get_db)):
     if isinstance(br.get("logo_url"), str) and br["logo_url"].strip():
         logo_url = br["logo_url"].strip()
 
+    # Payment providers enabled (sin exponer credenciales)
+    pay_settings = settings.get("payments") if isinstance(settings, dict) else {}
+    pay_settings = pay_settings if isinstance(pay_settings, dict) else {}
+    payment_providers = {
+        "mercadopago": bool(pay_settings.get("mercadopago", {}) and pay_settings["mercadopago"].get("enabled")),
+        "webpay": bool(pay_settings.get("webpay", {}) and pay_settings["webpay"].get("enabled")),
+        "cash": pay_settings.get("cash", {}).get("enabled", True) if isinstance(pay_settings.get("cash"), dict) else True,
+        "transfer": bool(pay_settings.get("transfer", {}) and pay_settings["transfer"].get("enabled")),
+    }
+
     return {
         "store_id": store.id,
         "name": store.name,
         "slug": store.slug,
         "logo_url": logo_url,
         "public": public_block,
+        "payment_providers": payment_providers,
     }
 
 

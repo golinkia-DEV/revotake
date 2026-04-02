@@ -365,14 +365,19 @@ export default function PublicBookPage() {
     setSvcOpenCats((o) => ({ ...o, [key]: o[key] === false ? true : false }));
   };
 
+  const paymentProviders = (meta.data?.payment_providers ?? {}) as Record<string, boolean>;
+  const hasOnlinePayment = paymentProviders.mercadopago || paymentProviders.webpay;
+  const requiresDeposit = (selectedService?.deposit_required_cents ?? 0) > 0;
+
   const book = useMutation({
     mutationFn: () => {
+      const needsOnline = requiresDeposit && hasOnlinePayment;
       const payload = {
         branch_id: branchId,
         professional_id: professionalId,
         service_id: serviceId,
         start_time: slotStart,
-        payment_mode: "on_site",
+        payment_mode: needsOnline ? "online" : "on_site",
         client_name: clientName,
         client_email: clientEmail || null,
         client_phone: clientPhone || null,
@@ -384,13 +389,52 @@ export default function PublicBookPage() {
       }
       return publicApi.post(`/public/scheduling/${slug}/bookings`, payload);
     },
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (selectedFlashDealId) {
         toast.success(`¡Oferta reclamada! Ahorra ${res.data.flash_deal?.discount_percent ?? 0}% con esta oferta flash.`);
       } else {
         toast.success("¡Cita registrada!");
       }
-      window.location.href = `/book/manage/${res.data.manage_token}`;
+      const appointmentId: string = res.data.appointment_id ?? res.data.id;
+      const manageToken: string = res.data.manage_token;
+
+      // Redirigir al checkout online si corresponde
+      if (requiresDeposit && hasOnlinePayment && appointmentId) {
+        try {
+          if (paymentProviders.mercadopago) {
+            const ckRes = await publicApi.post(`/public/scheduling/${slug}/checkout/mercadopago`, {
+              appointment_id: appointmentId,
+              payer_email: clientEmail || null,
+            });
+            const isSandbox = process.env.NODE_ENV !== "production";
+            const checkoutUrl = isSandbox
+              ? ckRes.data.sandbox_init_point
+              : ckRes.data.init_point;
+            window.location.href = checkoutUrl;
+            return;
+          }
+          if (paymentProviders.webpay) {
+            const ckRes = await publicApi.post(`/public/scheduling/${slug}/checkout/webpay`, {
+              appointment_id: appointmentId,
+            });
+            // WebPay: POST form redirect (url + token_ws)
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = ckRes.data.url;
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "token_ws";
+            input.value = ckRes.data.token;
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+            return;
+          }
+        } catch {
+          toast.error("No se pudo iniciar el pago online. Tu cita quedó reservada.");
+        }
+      }
+      window.location.href = `/book/manage/${manageToken}`;
     },
     onError: (e: unknown) => {
       const msg = axios.isAxiosError(e) ? e.response?.data?.detail : "Error al reservar";

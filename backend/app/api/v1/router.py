@@ -17,6 +17,7 @@ from app.api.v1.endpoints import (
     scheduling_admin,
     scheduling_staff,
     scheduling_public,
+    scheduling_checkout,
     scheduling_webhooks,
     flash_deals,
     public_explore,
@@ -71,6 +72,7 @@ api_router.include_router(notifications.router, prefix="/notifications", tags=["
 api_router.include_router(scheduling_admin.router, prefix="/scheduling", tags=["scheduling"])
 api_router.include_router(scheduling_staff.router, prefix="/scheduling", tags=["scheduling-staff"])
 api_router.include_router(scheduling_public.router, prefix="/public/scheduling", tags=["scheduling-public"])
+api_router.include_router(scheduling_checkout.router, prefix="/public/scheduling", tags=["scheduling-checkout"])
 api_router.include_router(scheduling_webhooks.router, prefix="/webhooks/scheduling", tags=["webhooks-scheduling"])
 api_router.include_router(flash_deals.router, prefix="/scheduling", tags=["flash-deals"])
 api_router.include_router(public_explore.router, prefix="/public/explore", tags=["public-explore"])

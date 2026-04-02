@@ -18,8 +18,21 @@ from app.models.scheduling import (
 )
 from app.models.store import Store
 from app.services.mail import send_html_email
+from app.services import email_templates as tmpl
 
 logger = logging.getLogger(__name__)
+
+
+def _store_color(store: Store) -> str:
+    try:
+        sp = (store.settings or {}).get("store_profile") or {}
+        br = sp.get("branding") or {}
+        color = br.get("primary_color", "")
+        if color and color.startswith("#") and len(color) in (4, 7):
+            return color
+    except Exception:
+        pass
+    return "#7C3AED"
 
 
 async def process_scheduling_notifications(db: AsyncSession, limit: int = 50) -> int:
@@ -47,6 +60,8 @@ async def process_scheduling_notifications(db: AsyncSession, limit: int = 50) ->
             sent += 1
             continue
 
+        store_color = _store_color(store)
+
         client_email: str | None = None
         client_name = "Cliente"
         if appt.client_id:
@@ -59,80 +74,82 @@ async def process_scheduling_notifications(db: AsyncSession, limit: int = 50) ->
         prof = await db.get(Professional, appt.professional_id)
         branch = await db.get(Branch, appt.branch_id)
         svc_name = svc.name if svc else "Servicio"
-        prof_name = prof.name if prof else "Profesional"
+        prof_name = prof.name if prof else ""
         branch_name = branch.name if branch else ""
         store_name = store.name
+        currency = svc.currency if svc else "CLP"
 
         manage_url = f"{settings.FRONTEND_URL.rstrip('/')}/book/manage/{appt.manage_token}"
         book_url = f"{settings.FRONTEND_URL.rstrip('/')}/book/{store.slug}"
+        start_fmt = appt.start_time.strftime("%d/%m/%Y %H:%M")
 
-        if job.kind == NotificationJobKind.BOOKING_CONFIRMATION.value:
-            cancellation_policy = ""
-            if svc and svc.cancellation_hours > 0:
-                fee_text = (
-                    f" Se aplicará un cargo de {svc.cancellation_fee_cents // 100} {svc.currency}."
-                    if svc.cancellation_fee_cents > 0
-                    else ""
-                )
-                cancellation_policy = (
-                    f"<p><em>Política de cancelación: cancela con al menos "
-                    f"{svc.cancellation_hours} horas de antelación sin costo.{fee_text}</em></p>"
-                )
-            deposit_text = ""
-            if svc and svc.deposit_required_cents > 0:
-                deposit_text = (
-                    f"<p><strong>Depósito requerido:</strong> "
-                    f"{svc.deposit_required_cents // 100} {svc.currency} al llegar.</p>"
-                )
-            subject = f"Cita confirmada: {svc_name}"
-            html = f"""
-            <p>Hola {client_name},</p>
-            <p>Tu cita para <strong>{svc_name}</strong> con {prof_name}
-            {f" en {branch_name}" if branch_name else ""} quedó registrada en {store_name}.</p>
-            <p><strong>Inicio:</strong> {appt.start_time.strftime("%Y-%m-%d %H:%M")} UTC</p>
-            {deposit_text}
-            {cancellation_policy}
-            <p><a href="{manage_url}">Gestionar o cancelar tu cita</a></p>
-            """
-        elif job.kind == NotificationJobKind.REMINDER_24H.value:
-            subject = f"Recordatorio: cita mañana — {svc_name}"
-            html = f"""
-            <p>Hola {client_name},</p>
-            <p>Te recordamos tu cita con {prof_name}: <strong>{svc_name}</strong>.</p>
-            <p><strong>Inicio:</strong> {appt.start_time.strftime("%Y-%m-%d %H:%M")} UTC</p>
-            <p><a href="{manage_url}">Confirmar o cancelar</a></p>
-            """
-        elif job.kind == NotificationJobKind.REMINDER_1H.value:
-            subject = f"Recordatorio: tu cita en 1 hora — {svc_name}"
-            html = f"""
-            <p>Hola {client_name},</p>
-            <p>Tu cita con {prof_name} comienza en aproximadamente una hora.</p>
-            <p><strong>{svc_name}</strong> — {appt.start_time.strftime("%H:%M")} UTC</p>
-            <p><a href="{manage_url}">Abrir gestión</a></p>
-            """
-        elif job.kind == NotificationJobKind.POST_VISIT_REVIEW.value:
-            subject = f"¿Cómo estuvo tu visita? — {store_name}"
-            html = f"""
-            <p>Hola {client_name},</p>
-            <p>Esperamos que tu experiencia con <strong>{svc_name}</strong>
-            {f"con {prof_name}" if prof_name else ""} haya sido excelente.</p>
-            <p>Tu opinión nos ayuda a mejorar. ¿Nos dejas una reseña?</p>
-            <p><a href="{manage_url}">Evaluar mi experiencia</a></p>
-            <p>¡Gracias por visitarnos!</p>
-            <p><em>{store_name}</em></p>
-            """
-        elif job.kind == NotificationJobKind.REBOOKING_SUGGESTION.value:
-            subject = f"Es hora de tu próxima cita — {svc_name}"
-            html = f"""
-            <p>Hola {client_name},</p>
-            <p>Han pasado unos días desde tu última visita para <strong>{svc_name}</strong>.</p>
-            <p>¿Quieres agendar tu próxima cita? Tenemos disponibilidad esperándote.</p>
-            <p><a href="{book_url}">Reservar ahora</a></p>
-            <p><em>{store_name}</em></p>
-            """
+        subject: str
+        html: str
+
+        kind = job.kind
+
+        if kind == NotificationJobKind.BOOKING_CONFIRMATION.value:
+            subject, html = tmpl.booking_confirmation(
+                client_name=client_name,
+                store_name=store_name,
+                store_color=store_color,
+                service_name=svc_name,
+                professional_name=prof_name,
+                branch_name=branch_name,
+                start_time_fmt=start_fmt,
+                deposit_cents=svc.deposit_required_cents if svc else 0,
+                currency=currency,
+                cancellation_hours=svc.cancellation_hours if svc else 0,
+                cancellation_fee_cents=svc.cancellation_fee_cents if svc else 0,
+                manage_url=manage_url,
+            )
+
+        elif kind == NotificationJobKind.REMINDER_24H.value:
+            subject, html = tmpl.reminder(
+                client_name=client_name,
+                store_name=store_name,
+                store_color=store_color,
+                service_name=svc_name,
+                professional_name=prof_name,
+                start_time_fmt=start_fmt,
+                hours_before=24,
+                manage_url=manage_url,
+            )
+
+        elif kind == NotificationJobKind.REMINDER_1H.value:
+            subject, html = tmpl.reminder(
+                client_name=client_name,
+                store_name=store_name,
+                store_color=store_color,
+                service_name=svc_name,
+                professional_name=prof_name,
+                start_time_fmt=start_fmt,
+                hours_before=1,
+                manage_url=manage_url,
+            )
+
+        elif kind == NotificationJobKind.POST_VISIT_REVIEW.value:
+            subject, html = tmpl.post_visit_review(
+                client_name=client_name,
+                store_name=store_name,
+                store_color=store_color,
+                service_name=svc_name,
+                professional_name=prof_name,
+                manage_url=manage_url,
+            )
+
+        elif kind == NotificationJobKind.REBOOKING_SUGGESTION.value:
+            subject, html = tmpl.rebooking_suggestion(
+                client_name=client_name,
+                store_name=store_name,
+                store_color=store_color,
+                service_name=svc_name,
+                book_url=book_url,
+            )
+
         else:
-            subject = "Notificación de cita"
-            html = f"<p>{svc_name} — {appt.start_time}</p><p><a href='{manage_url}'>Gestionar</a></p>"
+            subject = f"Notificación — {store_name}"
+            html = f"<p>{svc_name} — {start_fmt}</p><p><a href='{manage_url}'>Gestionar</a></p>"
 
         ok = True
         if client_email:
@@ -161,9 +178,6 @@ async def notify_waitlist_for_slot(
     limit: int = 3,
 ) -> int:
     """Notifica hasta `limit` entradas en la lista de espera cuando se libera un slot."""
-    from app.models.scheduling import WaitlistEntry
-    from app.models.store import Store
-
     freed_date_only = freed_date.date()
     r = await db.execute(
         select(WaitlistEntry)
@@ -185,6 +199,7 @@ async def notify_waitlist_for_slot(
     svc = await db.get(Service, service_id)
     svc_name = svc.name if svc else "Servicio"
     store_name = store.name if store else ""
+    store_color = _store_color(store) if store else "#7C3AED"
     book_url = f"{settings.FRONTEND_URL.rstrip('/')}/book/{store.slug}" if store else ""
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     notified = 0
@@ -195,14 +210,15 @@ async def notify_waitlist_for_slot(
             entry.notified_at = now
             notified += 1
             continue
-        subject = f"¡Hay disponibilidad! — {svc_name}"
-        html = f"""
-        <p>Hola {entry.client_name},</p>
-        <p>Se liberó un espacio para <strong>{svc_name}</strong>
-        el <strong>{freed_date_only.strftime("%d/%m/%Y")}</strong> en {store_name}.</p>
-        <p>Reserva ahora antes de que se ocupe:</p>
-        <p><a href="{book_url}">Agendar mi cita</a></p>
-        """
+
+        subject, html = tmpl.waitlist_slot_available(
+            client_name=entry.client_name,
+            store_name=store_name,
+            store_color=store_color,
+            service_name=svc_name,
+            date_fmt=freed_date_only.strftime("%d/%m/%Y"),
+            book_url=book_url,
+        )
         ok = send_html_email(entry.client_email, subject, html)
         if ok:
             entry.status = "notified"

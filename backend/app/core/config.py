@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     # Directorio para logos y fotos de servicios (persistir en volumen en producción)
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_IMAGE_MB: int = 5
+    # MercadoPago (access token de producción o sandbox)
+    MERCADOPAGO_ACCESS_TOKEN: str = ""
+    # Secreto para verificar firma x-signature de webhooks MP
+    MERCADOPAGO_WEBHOOK_SECRET: str = ""
+    # WebPay Plus (Transbank)
+    WEBPAY_COMMERCE_CODE: str = "597055555532"
+    WEBPAY_API_KEY: str = "579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C"
+    # True = Integration (sandbox), False = Producción
+    WEBPAY_SANDBOX: bool = True
 
     class Config:
         env_file = ".env"

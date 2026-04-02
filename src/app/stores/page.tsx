@@ -250,7 +250,7 @@ export default function StoresPage() {
       if (importError) {
         toast.error(`La tienda quedó creada, pero la importación de clientes falló: ${importError}`);
       }
-      router.push("/dashboard");
+      router.push("/onboarding");
     },
     onError: (e: unknown) => {
       const d = axios.isAxiosError(e) ? e.response?.data?.detail : null;
