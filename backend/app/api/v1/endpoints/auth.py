@@ -51,6 +51,12 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+@router.get("/config")
+async def public_config():
+    """Configuración pública para el frontend (sin secretos)."""
+    return {"google_client_id": settings.GOOGLE_CLIENT_ID or ""}
+
+
 @router.post("/login", response_model=Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == form_data.username))
