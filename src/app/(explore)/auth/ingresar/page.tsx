@@ -7,9 +7,19 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { usePublicAuth } from "@/contexts/PublicAuthContext";
 import { useGoogleLogin } from "@react-oauth/google";
+import { API_URL } from "@/lib/api";
+
+function redirectByRole(globalRole: string, router: ReturnType<typeof useRouter>) {
+  if (globalRole === "platform_admin" || globalRole === "platform_operator") {
+    router.push("/dashboard");
+  } else {
+    // store_admin, branch_admin, branch_operator, worker → elegir tienda primero
+    router.push("/stores");
+  }
+}
 
 export default function IngresarPage() {
-  const { login, googleLogin } = usePublicAuth();
+  const { login: publicLogin, googleLogin } = usePublicAuth();
   const router = useRouter();
   const [form, setForm] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
@@ -20,7 +30,26 @@ export default function IngresarPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(form.email, form.password);
+      // 1. Intentar login interno (platform_admin, store_admin, worker, etc.)
+      const formData = new FormData();
+      formData.append("username", form.email);
+      formData.append("password", form.password);
+      const internalRes = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (internalRes.ok) {
+        const data = await internalRes.json();
+        localStorage.setItem("revotake_token", data.access_token);
+        localStorage.setItem("revotake_user", JSON.stringify(data.user));
+        toast.success("¡Bienvenido!");
+        redirectByRole(data.user.global_role || data.user.role || "", router);
+        return;
+      }
+
+      // 2. Si login interno falla, intentar login público (cliente)
+      await publicLogin(form.email, form.password);
       toast.success("¡Bienvenida de vuelta!");
       router.push("/explorar");
     } catch {
@@ -34,6 +63,23 @@ export default function IngresarPage() {
     onSuccess: async (tokenResponse) => {
       setGoogleLoading(true);
       try {
+        // Intentar login Google interno primero
+        const internalRes = await fetch(`${API_URL}/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential: tokenResponse.access_token }),
+        });
+
+        if (internalRes.ok) {
+          const data = await internalRes.json();
+          localStorage.setItem("revotake_token", data.access_token);
+          localStorage.setItem("revotake_user", JSON.stringify(data.user));
+          toast.success("¡Bienvenido!");
+          redirectByRole(data.user.global_role || data.user.role || "", router);
+          return;
+        }
+
+        // Fallback: login Google público
         await googleLogin(tokenResponse.access_token);
         toast.success("¡Bienvenida de vuelta!");
         router.push("/explorar");

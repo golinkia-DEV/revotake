@@ -124,7 +124,7 @@ async def google_login(data: GoogleAuthRequest, db: AsyncSession = Depends(get_d
     if not google_id or not email:
         raise HTTPException(status_code=400, detail="Token de Google no contiene email o sub")
 
-    # Look up by google_id first, then by email
+    # Solo permite login a usuarios internos ya existentes (no auto-crea cuentas)
     result = await db.execute(select(User).where(User.google_id == google_id))
     user = result.scalar_one_or_none()
 
@@ -132,19 +132,10 @@ async def google_login(data: GoogleAuthRequest, db: AsyncSession = Depends(get_d
         result = await db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
         if user:
-            # Link existing account to Google
+            # Vincular cuenta existente con Google
             user.google_id = google_id
         else:
-            # Create new user
-            user = User(
-                email=email,
-                name=name,
-                hashed_password=None,
-                google_id=google_id,
-                role=UserRole.SELLER,
-            )
-            db.add(user)
-            await db.flush()
+            raise HTTPException(status_code=404, detail="No tienes una cuenta interna en RevoTake")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Usuario inactivo")
