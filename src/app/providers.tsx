@@ -9,14 +9,19 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: { queries: { staleTime: 30000, retry: 1 } }
   }));
-  const [googleClientId, setGoogleClientId] = useState("");
+  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/auth/config`)
       .then((r) => r.json())
-      .then((d) => { if (d.google_client_id) setGoogleClientId(d.google_client_id); })
-      .catch(() => {});
+      .then((d) => setGoogleClientId(d.google_client_id || ""))
+      .catch(() => setGoogleClientId(""));
   }, []);
+
+  // No montar GoogleOAuthProvider hasta tener el clientId del backend
+  if (googleClientId === null) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  }
 
   return (
     <GoogleOAuthProvider clientId={googleClientId}>
