@@ -1,69 +1,31 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Scissors, Eye, EyeOff, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { usePublicAuth } from "@/contexts/PublicAuthContext";
 import { useGoogleLogin } from "@react-oauth/google";
 import { API_URL } from "@/lib/api";
+import { useState } from "react";
 
 function redirectByRole(globalRole: string, router: ReturnType<typeof useRouter>) {
   if (globalRole === "platform_admin" || globalRole === "platform_operator") {
     router.push("/dashboard");
   } else {
-    // store_admin, branch_admin, branch_operator, worker → elegir tienda primero
     router.push("/stores");
   }
 }
 
 export default function IngresarPage() {
-  const { login: publicLogin, googleLogin } = usePublicAuth();
+  const { googleLogin } = usePublicAuth();
   const router = useRouter();
-  const [form, setForm] = useState({ email: "", password: "" });
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      // 1. Intentar login interno (platform_admin, store_admin, worker, etc.)
-      const formData = new FormData();
-      formData.append("username", form.email);
-      formData.append("password", form.password);
-      const internalRes = await fetch(`${API_URL}/auth/login`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (internalRes.ok) {
-        const data = await internalRes.json();
-        localStorage.setItem("revotake_token", data.access_token);
-        localStorage.setItem("revotake_user", JSON.stringify(data.user));
-        toast.success("¡Bienvenido!");
-        redirectByRole(data.user.global_role || data.user.role || "", router);
-        return;
-      }
-
-      // 2. Si login interno falla, intentar login público (cliente)
-      await publicLogin(form.email, form.password);
-      toast.success("¡Bienvenida de vuelta!");
-      router.push("/explorar");
-    } catch {
-      toast.error("Correo o contraseña incorrectos");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleGoogleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
-      setGoogleLoading(true);
+      setLoading(true);
       try {
-        // Intentar login Google interno primero
+        // 1. Intentar login interno primero
         const internalRes = await fetch(`${API_URL}/auth/google`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -79,14 +41,14 @@ export default function IngresarPage() {
           return;
         }
 
-        // Fallback: login Google público
+        // 2. Fallback: login público (cliente)
         await googleLogin(tokenResponse.access_token);
         toast.success("¡Bienvenida de vuelta!");
         router.push("/explorar");
       } catch {
         toast.error("Error al continuar con Google");
       } finally {
-        setGoogleLoading(false);
+        setLoading(false);
       }
     },
     onError: () => toast.error("Error al iniciar sesión con Google"),
@@ -94,24 +56,22 @@ export default function IngresarPage() {
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center px-4 py-12 bg-gray-50">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-violet-600 flex items-center justify-center mx-auto mb-3">
-            <Scissors className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Ingresar</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Accede a tu cuenta de RevoTake
-          </p>
+      <div className="w-full max-w-sm text-center">
+        <div className="w-14 h-14 rounded-2xl bg-violet-600 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+          </svg>
         </div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Ingresar a RevoTake</h1>
+        <p className="text-sm text-gray-500 mb-8">Usa tu cuenta de Google para continuar</p>
 
         <button
           type="button"
           onClick={() => handleGoogleLogin()}
-          disabled={googleLoading || loading}
-          className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-200 rounded-xl bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60 mb-4"
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-xl bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60 shadow-sm"
         >
-          {googleLoading ? (
+          {loading ? (
             <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
             <>
@@ -125,68 +85,6 @@ export default function IngresarPage() {
             </>
           )}
         </button>
-
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-px flex-1 bg-gray-200" />
-          <span className="text-xs text-gray-400">o con correo</span>
-          <div className="h-px flex-1 bg-gray-200" />
-        </div>
-
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Correo electrónico</label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="maria@ejemplo.com"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                required
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="Tu contraseña"
-                className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-60"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Ingresando...
-              </span>
-            ) : (
-              "Ingresar"
-            )}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-gray-500 mt-4">
-          ¿No tienes cuenta?{" "}
-          <Link href="/auth/registro" className="text-violet-600 font-semibold hover:underline">
-            Registrarse gratis
-          </Link>
-        </p>
       </div>
     </div>
   );

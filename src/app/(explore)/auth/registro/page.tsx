@@ -1,101 +1,20 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Scissors, Eye, EyeOff, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { usePublicAuth } from "@/contexts/PublicAuthContext";
 import { useGoogleLogin } from "@react-oauth/google";
-
-function PasswordStrength({ password }: { password: string }) {
-  const checks = [
-    { label: "8 caracteres", ok: password.length >= 8 },
-    { label: "Mayúscula", ok: /[A-Z]/.test(password) },
-    { label: "Número", ok: /\d/.test(password) },
-  ];
-  const score = checks.filter((c) => c.ok).length;
-  const colors = ["bg-red-400", "bg-yellow-400", "bg-green-500"];
-  const labels = ["Débil", "Regular", "Fuerte"];
-
-  if (!password) return null;
-
-  return (
-    <div className="mt-2 space-y-1.5">
-      <div className="flex gap-1">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className={`h-1 flex-1 rounded-full transition-colors ${
-              i < score ? colors[score - 1] : "bg-gray-200"
-            }`}
-          />
-        ))}
-      </div>
-      <div className="flex items-center justify-between">
-        <div className="flex gap-3">
-          {checks.map((c) => (
-            <span
-              key={c.label}
-              className={`text-xs ${c.ok ? "text-green-600" : "text-gray-400"}`}
-            >
-              {c.ok ? "✓" : "·"} {c.label}
-            </span>
-          ))}
-        </div>
-        {score > 0 && (
-          <span className={`text-xs font-medium ${score === 3 ? "text-green-600" : score === 2 ? "text-yellow-600" : "text-red-500"}`}>
-            {labels[score - 1]}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
+import { useState } from "react";
 
 export default function RegistroPage() {
-  const { register, googleLogin } = usePublicAuth();
+  const { googleLogin } = usePublicAuth();
   const router = useRouter();
-  const [form, setForm] = useState({ name: "", email: "", phone: "", password: "", confirm: "" });
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-
-  const passwordsMatch = form.confirm === "" || form.password === form.confirm;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (form.password.length < 8) {
-      toast.error("La contraseña debe tener al menos 8 caracteres");
-      return;
-    }
-    if (form.password !== form.confirm) {
-      toast.error("Las contraseñas no coinciden");
-      return;
-    }
-    setLoading(true);
-    try {
-      await register(form.name, form.email, form.phone, form.password);
-      toast.success("¡Cuenta creada! Bienvenida a RevoTake");
-      router.push("/explorar");
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail;
-      if (typeof detail === "string") {
-        toast.error(detail);
-      } else if (Array.isArray(detail)) {
-        toast.error(detail[0]?.msg || "Error al crear cuenta");
-      } else {
-        toast.error("Error al crear cuenta");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleGoogleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
-      setGoogleLoading(true);
+      setLoading(true);
       try {
         await googleLogin(tokenResponse.access_token);
         toast.success("¡Bienvenida a RevoTake!");
@@ -103,7 +22,7 @@ export default function RegistroPage() {
       } catch {
         toast.error("Error al continuar con Google");
       } finally {
-        setGoogleLoading(false);
+        setLoading(false);
       }
     },
     onError: () => toast.error("Error al iniciar sesión con Google"),
@@ -111,24 +30,22 @@ export default function RegistroPage() {
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex items-center justify-center px-4 py-12 bg-gray-50">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-2xl bg-violet-600 flex items-center justify-center mx-auto mb-3">
-            <Scissors className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Crear cuenta</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Descubre y reserva en los mejores salones
-          </p>
+      <div className="w-full max-w-sm text-center">
+        <div className="w-14 h-14 rounded-2xl bg-violet-600 flex items-center justify-center mx-auto mb-4">
+          <svg className="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+          </svg>
         </div>
+        <h1 className="text-2xl font-bold text-gray-900 mb-1">Crear cuenta en RevoTake</h1>
+        <p className="text-sm text-gray-500 mb-8">Usa tu cuenta de Google para registrarte</p>
 
         <button
           type="button"
           onClick={() => handleGoogleLogin()}
-          disabled={googleLoading || loading}
-          className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-200 rounded-xl bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60 mb-4"
+          disabled={loading}
+          className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-xl bg-white text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-60 shadow-sm"
         >
-          {googleLoading ? (
+          {loading ? (
             <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
             <>
@@ -143,118 +60,9 @@ export default function RegistroPage() {
           )}
         </button>
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="h-px flex-1 bg-gray-200" />
-          <span className="text-xs text-gray-400">o con correo</span>
-          <div className="h-px flex-1 bg-gray-200" />
-        </div>
-
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre completo</label>
-            <input
-              type="text"
-              required
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="María González"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Correo electrónico</label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="maria@ejemplo.com"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Teléfono <span className="text-gray-400 font-normal">(opcional)</span>
-            </label>
-            <input
-              type="tel"
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              placeholder="+56 9 1234 5678"
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                required
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="Mínimo 8 caracteres"
-                className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <PasswordStrength password={form.password} />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña</label>
-            <div className="relative">
-              <input
-                type={showConfirm ? "text" : "password"}
-                required
-                value={form.confirm}
-                onChange={(e) => setForm({ ...form, confirm: e.target.value })}
-                placeholder="Repite tu contraseña"
-                className={`w-full px-3 py-2.5 pr-10 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 ${
-                  !passwordsMatch ? "border-red-400 bg-red-50" : "border-gray-200"
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm(!showConfirm)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            {!passwordsMatch && (
-              <p className="mt-1 text-xs text-red-500">Las contraseñas no coinciden</p>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || !passwordsMatch || form.password.length < 8}
-            className="w-full py-2.5 bg-violet-600 text-white rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-60"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Creando cuenta...
-              </span>
-            ) : (
-              "Crear cuenta"
-            )}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-gray-500 mt-4">
-          ¿Ya tienes cuenta?{" "}
-          <Link href="/auth/ingresar" className="text-violet-600 font-semibold hover:underline">
-            Ingresar
-          </Link>
+        <p className="text-xs text-gray-400 mt-6">
+          Al continuar aceptas nuestros{" "}
+          <span className="text-violet-600">términos de uso</span>
         </p>
       </div>
     </div>
