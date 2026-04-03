@@ -176,12 +176,16 @@ async def google_login(body: GoogleAuthIn, db: AsyncSession = Depends(get_db)):
     r = await db.execute(select(PublicUser).where(PublicUser.google_id == google_id))
     user = r.scalar_one_or_none()
 
+    if user:
+        # Actualizar avatar si cambió en Google
+        if avatar_url:
+            user.avatar_url = avatar_url
     if not user:
         r = await db.execute(select(PublicUser).where(PublicUser.email == email))
         user = r.scalar_one_or_none()
         if user:
             user.google_id = google_id
-            if not user.avatar_url and avatar_url:
+            if avatar_url:
                 user.avatar_url = avatar_url
         else:
             user = PublicUser(
